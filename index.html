@@ -26,6 +26,8 @@
       flex-shrink: 0;
       border-bottom: 1px solid rgba(255,255,255,0.12);
       backdrop-filter: blur(10px);
+      position: relative; /* Bắt buộc */
+      z-index: 999;       /* Đẩy nav lên trên cùng */
     }
 
     .logo {
@@ -207,7 +209,9 @@
       flex: 1;
       position: relative;
       display: none;
-      min-height: calc(100vh - 68px);
+      /* Giới hạn chiều cao để không tràn lên nav */
+      height: calc(100vh - 68px); 
+      overflow: hidden;
     }
 
     .frame-wrap.show {
@@ -216,19 +220,22 @@
 
     iframe {
       position: absolute;
-      inset: 0;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
       border: none;
       opacity: 0;
-      pointer-events: none;
+      /* Khi ẩn thì không nhận click */
+      pointer-events: none; 
       transition: opacity 0.35s ease;
       background: transparent;
     }
 
     iframe.active {
       opacity: 1;
-      pointer-events: auto;
+      /* Khi hiện thì nhận click NHƯNG CHỈ TRONG VÙNG CỦA NÓ (dưới nav) */
+      pointer-events: auto; 
     }
 
     @media (max-width: 920px) {
