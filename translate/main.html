@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Phiên dịch</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #3A6EA5;
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px 24px;
+    }
+
+    h2 { font-size: 1.5rem; margin-bottom: 6px; }
+    h2 span { color: #A8EDEA; }
+    .subtitle { color: #C8DCF0; font-size: 0.9rem; margin-bottom: 32px; }
+
+    .translate-wrap { max-width: 680px; margin: 0 auto; }
+
+    /* INPUT */
+    .input-row {
+      display: flex; gap: 10px; margin-bottom: 20px;
+    }
+    .text-input {
+      flex: 1;
+      background: #2D5A8E;
+      border: 1px solid #4A7EB5;
+      color: #fff;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .text-input::placeholder { color: #7AADD4; }
+    .text-input:focus { border-color: #A8EDEA; }
+
+    .trans-btn {
+      background: #A8EDEA; color: #1E3F6B;
+      border: none; padding: 12px 22px;
+      border-radius: 12px; font-size: 0.95rem; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .trans-btn:hover { background: #7cd8d5; }
+
+    /* TOKEN ROW */
+    .token-row {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      min-height: 36px; margin-bottom: 20px;
+    }
+    .token {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #2D5A8E; border: 1px solid #4A7EB5;
+      border-radius: 99px; padding: 4px 12px;
+      font-size: 0.85rem; cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .token:hover  { border-color: #A8EDEA; }
+    .token.active { background: #A8EDEA22; border-color: #A8EDEA; color: #A8EDEA; }
+    .token.not-found { border-color: #7AADD4; color: #7AADD4; cursor: default; opacity: 0.6; }
+    .token .dot { width: 6px; height: 6px; border-radius: 50%; background: #6EE7B7; }
+    .token.not-found .dot { background: #7AADD4; }
+
+    /* VIDEO PLAYER */
+    .player-box {
+      background: #0a0a0e;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid #4A7EB5;
+      min-height: 80px;
+    }
+    .player-video { width: 100%; aspect-ratio: 16/9; display: block; object-fit: contain; display: none; }
+    .player-empty {
+      padding: 48px;
+      text-align: center;
+      color: #555;
+      font-size: 0.85rem;
+    }
+    .player-empty span { display: block; font-size: 2rem; margin-bottom: 8px; }
+
+    .playing-label {
+      padding: 10px 16px;
+      font-size: 0.82rem; color: #A8EDEA;
+      background: #1E3F6B;
+      border-top: 1px solid #4A7EB5;
+      min-height: 38px;
+    }
+    .playing-label.hidden { display: none; }
+  </style>
+</head>
+<body>
+
+<h2>Phiên dịch <span>Ký hiệu</span></h2>
+<p class="subtitle">Nhập câu tiếng Việt — hệ thống chiếu từng ký hiệu tương ứng</p>
+
+<div class="translate-wrap">
+  <div class="input-row">
+    <input class="text-input" id="textInput" type="text"
+           placeholder="Ví dụ: tôi muốn ăn cơm..."
+           onkeydown="if(event.key==='Enter') translate()"/>
+    <button class="trans-btn" onclick="translate()">▶ Dịch</button>
+  </div>
+
+  <div class="token-row" id="tokenRow"></div>
+
+  <div class="player-box">
+    <video class="player-video" id="playerVid" playsinline></video>
+    <div class="player-empty" id="playerEmpty">
+      <span>💬</span>Nhập câu và nhấn Dịch để bắt đầu
+    </div>
+    <div class="playing-label hidden" id="playingLabel"></div>
+  </div>
+</div>
+
+<script>
+// Kho từ — label phải khớp chính xác (lowercase trim) với token sau khi LLM tách
+const WORDS = [
+  { label:"ăn",      videoFile:"an.mp4"      },
+  { label:"bàn chân",videoFile:"ban_chan.mp4" },
+  { label:"bạn",     videoFile:"ban.mp4"      },
+];
+const VIDEO_DIR = "../learn/videos/";
+
+function findWord(token) {
+  return WORDS.find(w => w.label === token.trim().toLowerCase());
+}
+
+// Tách đơn giản: split theo khoảng trắng (sau này thay bằng LLM)
+function tokenizeSimple(text) {
+  return text.trim().split(/\s+/).filter(Boolean);
+}
+
+let queue = [], qIdx = 0;
+
+function translate() {
+  const text = document.getElementById("textInput").value.trim();
+  if (!text) return;
+
+  const tokens = tokenizeSimple(text);
+  const tokenRow = document.getElementById("tokenRow");
+  tokenRow.innerHTML = "";
+
+  queue = []; qIdx = 0;
+  tokens.forEach(t => {
+    const w = findWord(t);
+    const chip = document.createElement("div");
+    chip.className = "token" + (w ? "" : " not-found");
+    chip.innerHTML = `<span class="dot"></span>${t}`;
+    chip.dataset.idx = queue.length;
+    if (w) {
+      queue.push({ token: t, word: w, el: chip });
+      chip.onclick = () => playFrom(parseInt(chip.dataset.idx));
+    }
+    tokenRow.appendChild(chip);
+  });
+
+  if (queue.length > 0) playFrom(0);
+  else {
+    document.getElementById("playerEmpty").style.display = "block";
+    document.getElementById("playerEmpty").innerHTML = '<span>🔍</span>Không tìm thấy từ nào trong kho';
+    document.getElementById("playerVid").style.display = "none";
+    document.getElementById("playingLabel").classList.add("hidden");
+  }
+}
+
+function playFrom(idx) {
+  qIdx = idx;
+  // Reset highlight
+  queue.forEach(q => q.el.classList.remove("active"));
+  playNext();
+}
+
+function playNext() {
+  if (qIdx >= queue.length) {
+    queue.forEach(q => q.el.classList.remove("active"));
+    document.getElementById("playingLabel").textContent = "✅ Hoàn tất";
+    return;
+  }
+
+  const { token, word, el } = queue[qIdx];
+  queue.forEach(q => q.el.classList.remove("active"));
+  el.classList.add("active");
+
+  document.getElementById("playerEmpty").style.display = "none";
+  document.getElementById("playingLabel").classList.remove("hidden");
+  document.getElementById("playingLabel").textContent = `▶ Đang chiếu: "${token}"`;
+
+  const vid = document.getElementById("playerVid");
+  vid.style.display = "block";
+  vid.src = VIDEO_DIR + word.videoFile;
+  vid.load(); vid.loop = false;
+  vid.play().catch(()=>{});
+
+  vid.onended = () => { qIdx++; playNext(); };
+  vid.onerror = () => { qIdx++; playNext(); };
+}
+</script>
+</body>
+</html>

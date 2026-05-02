@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Học</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #3A6EA5;
+      color: #fff;
+      min-height: 100vh;
+      padding: 32px 24px;
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      margin-bottom: 6px;
+    }
+    h2 span { color: #FFD166; }
+    .subtitle { color: #C8DCF0; font-size: 0.9rem; margin-bottom: 32px; }
+
+    /* GRID */
+    .word-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 16px;
+    }
+
+    .word-card {
+      background: #2D5A8E;
+      border: 1px solid #4A7EB5;
+      border-radius: 12px;
+      padding: 24px 16px 18px;
+      cursor: pointer;
+      text-align: center;
+      transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+      user-select: none;
+    }
+    .word-card:hover {
+      transform: translateY(-4px);
+      border-color: #FFD166;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+    }
+    .word-card .icon  { font-size: 2.2rem; margin-bottom: 10px; display: block; }
+    .word-card .label { font-size: 1.1rem; font-weight: 700; }
+    .word-card .topic { font-size: 0.72rem; color: #7AADD4; margin-top: 4px; text-transform: uppercase; }
+
+    /* MODAL OVERLAY */
+    .overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(6px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .overlay.open { display: flex; }
+
+    .modal {
+      background: #2D5A8E;
+      border: 1px solid #4A7EB5;
+      border-radius: 16px;
+      width: 100%; max-width: 600px;
+      overflow: hidden;
+      animation: pop 0.22s cubic-bezier(.16,1,.3,1);
+    }
+    @keyframes pop {
+      from { opacity:0; transform: scale(0.93) translateY(14px); }
+      to   { opacity:1; transform: scale(1)    translateY(0);     }
+    }
+
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 22px 14px;
+      border-bottom: 1px solid #4A7EB5;
+    }
+    .modal-title { font-size: 1.4rem; font-weight: 700; }
+    .modal-topic { font-size: 0.72rem; color: #FFD166; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+
+    .close-btn {
+      background: #1E3F6B; border: none; color: #C8DCF0;
+      width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+      font-size: 1rem; display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+    }
+    .close-btn:hover { background: #4A7EB5; }
+
+    /* TABS */
+    .tab-bar {
+      display: flex;
+      background: #1E3F6B;
+      border-bottom: 1px solid #4A7EB5;
+    }
+    .tab-btn {
+      flex: 1; padding: 10px 0; border: none; background: transparent;
+      color: #7AADD4; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn.active { color: #FFD166; border-bottom-color: #FFD166; }
+
+    /* VIDEO */
+    .video-wrap { background: #0a0a0e; aspect-ratio: 16/9; position: relative; }
+    .modal-video { width: 100%; height: 100%; display: block; object-fit: contain; }
+    .no-media {
+      display: none; position: absolute; inset: 0;
+      align-items: center; justify-content: center;
+      flex-direction: column; gap: 8px;
+      color: #555; font-size: 0.82rem;
+    }
+    .no-media.show { display: flex; }
+    .no-media code { color: #FFD166; font-size: 0.72rem; }
+
+    /* GLB */
+    #glbPanel { display: none; position: relative; }
+    #threeCanvas { width: 100%; aspect-ratio: 16/9; display: block; touch-action: none; }
+    .glb-hint { position: absolute; bottom: 8px; right: 12px; font-size: 0.7rem; color: #4A7EB5; pointer-events: none; }
+
+    /* CONTROLS */
+    .controls {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 12px 18px; background: #1E3F6B;
+      border-top: 1px solid #4A7EB5;
+    }
+    .ctrl-btn {
+      background: #2D5A8E; border: 1px solid #4A7EB5; color: #C8DCF0;
+      padding: 6px 13px; border-radius: 8px; cursor: pointer;
+      font-size: 0.8rem; font-weight: 600;
+      transition: background 0.15s, color 0.15s;
+    }
+    .ctrl-btn:hover { background: #4A7EB5; color: #fff; }
+    .ctrl-btn.on { background: #FFD16622; color: #FFD166; border-color: #FFD16688; }
+    .sep { width: 1px; height: 20px; background: #4A7EB5; margin: 0 2px; }
+    .speed-label { font-size: 0.75rem; color: #7AADD4; }
+
+    #videoControls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    #glbControls   { display: none; align-items: center; gap: 8px; }
+
+    .modal-desc { padding: 14px 22px 18px; font-size: 0.86rem; color: #C8DCF0; line-height: 1.6; }
+    .modal-desc strong { color: #fff; }
+  </style>
+</head>
+<body>
+
+<h2>Thư viện <span>Ký hiệu</span></h2>
+<p class="subtitle">Chọn một từ để xem video hoặc mô hình 3D</p>
+
+<div class="word-grid" id="wordGrid"></div>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="mTitle">—</div>
+        <div class="modal-topic" id="mTopic">—</div>
+      </div>
+      <button class="close-btn" id="closeBtn">✕</button>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tabVideo" onclick="switchTab('video')">▶ Video</button>
+      <button class="tab-btn"        id="tabGlb"   onclick="switchTab('glb')">⬡ 3D</button>
+    </div>
+
+    <div id="videoPanel">
+      <div class="video-wrap">
+        <video class="modal-video" id="mVideo" autoplay loop playsinline></video>
+        <div class="no-media" id="noVideo">Chưa có video<br><code id="noVideoPath"></code></div>
+      </div>
+    </div>
+
+    <div id="glbPanel">
+      <canvas id="threeCanvas"></canvas>
+      <div class="glb-hint">🖱 Kéo xoay · Scroll zoom</div>
+      <div class="no-media" id="noGlb">Chưa có GLB<br><code id="noGlbPath"></code></div>
+    </div>
+
+    <div class="controls">
+      <div id="videoControls">
+        <button class="ctrl-btn" id="btnPlay">⏸ Tạm dừng</button>
+        <button class="ctrl-btn on" id="btnLoop">🔁 Lặp: Bật</button>
+        <div class="sep"></div>
+        <span class="speed-label">Tốc độ:</span>
+        <button class="ctrl-btn" data-speed="0.5">0.5×</button>
+        <button class="ctrl-btn on" data-speed="1">1×</button>
+        <button class="ctrl-btn" data-speed="1.5">1.5×</button>
+      </div>
+      <div id="glbControls">
+        <button class="ctrl-btn on" id="btnAutoRot">↻ Auto-rotate: Bật</button>
+        <button class="ctrl-btn on" id="btnAnim">⏸ Anim: Bật</button>
+        <button class="ctrl-btn"   id="btnReset">⌖ Reset</button>
+      </div>
+    </div>
+
+    <div class="modal-desc" id="mDesc">—</div>
+  </div>
+</div>
+
+<!-- Three.js -->
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ── Từ vựng ────────────────────────────────────────────────────────────────
+const WORDS = [
+  { label:"Ăn",      topic:"Hành động", icon:"🍚", videoFile:"an.mp4",       glbFile:"an.glb",       desc:"<strong>Mô tả:</strong> Đưa ngón tay chụm lại gần miệng, lặp lại 2–3 lần." },
+  { label:"Bàn chân",topic:"Cơ thể",    icon:"🦶", videoFile:"ban_chan.mp4",  glbFile:"ban_chan.glb",  desc:"<strong>Mô tả:</strong> Tay chỉ xuống bàn chân, vẽ đường bao quanh." },
+  { label:"Bạn",     topic:"Đại từ",    icon:"🤝", videoFile:"ban.mp4",       glbFile:"ban.glb",       desc:"<strong>Mô tả:</strong> Hai tay móc ngón vào nhau và lắc nhẹ." },
+];
+
+const VIDEO_DIR = "./videos/";
+const GLB_DIR   = "./glbs/";
+
+// Build grid
+const grid = document.getElementById("wordGrid");
+WORDS.forEach((w, i) => {
+  const c = document.createElement("div");
+  c.className = "word-card";
+  c.innerHTML = `<span class="icon">${w.icon}</span><div class="label">${w.label}</div><div class="topic">${w.topic}</div>`;
+  c.onclick = () => openModal(i);
+  grid.appendChild(c);
+});
+
+// Three.js
+let renderer, scene, camera, controls, mixer, clock, rafId;
+let autoRot = true, animPlay = true, currentWord = null;
+
+function initThree() {
+  const canvas = document.getElementById("threeCanvas");
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  resize();
+
+  scene  = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0a0e);
+
+  camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / canvas.clientHeight, 0.01, 100);
+  camera.position.set(0.019, 0.573, 3.365);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const d = new THREE.DirectionalLight(0xffffff, 1.2);
+  d.position.set(2, 4, 3); scene.add(d);
+
+  controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 1.5;
+  controls.target.set(0, 0.5, 0);
+
+  clock = new THREE.Clock();
+  loop();
+}
+
+function resize() {
+  const c = document.getElementById("threeCanvas");
+  renderer.setSize(c.clientWidth, c.clientHeight, false);
+  if (camera) { camera.aspect = c.clientWidth / c.clientHeight; camera.updateProjectionMatrix(); }
+}
+
+function loop() {
+  rafId = requestAnimationFrame(loop);
+  if (mixer && animPlay) mixer.update(clock.getDelta());
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+function clearGlb() {
+  if (!scene) return;
+  scene.children.filter(o => o.userData.sign).forEach(o => scene.remove(o));
+  if (mixer) { mixer.stopAllAction(); mixer = null; }
+}
+
+function loadGlb(file) {
+  clearGlb();
+  document.getElementById("noGlb").classList.remove("show");
+  new GLTFLoader().load(GLB_DIR + file, gltf => {
+    const m = gltf.scene; m.userData.sign = true;
+    scene.add(m);
+    camera.position.set(0.019, 0.573, 3.365);
+    controls.target.set(0, 0.5, 0); controls.update();
+    if (gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(m);
+      mixer.clipAction(gltf.animations[0]).play();
+    }
+  }, undefined, () => {
+    document.getElementById("noGlbPath").textContent = "glbs/" + file;
+    document.getElementById("noGlb").classList.add("show");
+  });
+}
+
+// Tab switch
+window.switchTab = function(tab) {
+  document.getElementById("tabVideo").classList.toggle("active", tab==="video");
+  document.getElementById("tabGlb").classList.toggle("active",   tab==="glb");
+  document.getElementById("videoPanel").style.display = tab==="video" ? "block" : "none";
+  document.getElementById("glbPanel").style.display   = tab==="glb"   ? "block" : "none";
+  document.getElementById("videoControls").style.display = tab==="video" ? "flex" : "none";
+  document.getElementById("glbControls").style.display   = tab==="glb"   ? "flex" : "none";
+
+  if (tab === "video") {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    mVideo.play().catch(()=>{});
+  } else {
+    mVideo.pause();
+    if (!renderer) initThree(); else loop();
+    if (currentWord) loadGlb(currentWord.glbFile);
+  }
+};
+
+// Open / close
+const overlay = document.getElementById("overlay");
+const mVideo  = document.getElementById("mVideo");
+
+function openModal(i) {
+  const w = currentWord = WORDS[i];
+  document.getElementById("mTitle").textContent = w.label;
+  document.getElementById("mTopic").textContent = w.topic;
+  document.getElementById("mDesc").innerHTML    = w.desc;
+
+  switchTab("video");
+  document.getElementById("noVideo").classList.remove("show");
+  mVideo.style.display = "block";
+  mVideo.src = VIDEO_DIR + w.videoFile;
+  mVideo.load(); mVideo.playbackRate = 1; mVideo.loop = true;
+  setSpeed(1);
+
+  mVideo.onerror = () => {
+    mVideo.style.display = "none";
+    document.getElementById("noVideoPath").textContent = "videos/" + w.videoFile;
+    document.getElementById("noVideo").classList.add("show");
+  };
+
+  overlay.classList.add("open");
+  document.body.style.overflow = "hidden";
+}
+
+function closeModal() {
+  overlay.classList.remove("open");
+  document.body.style.overflow = "";
+  mVideo.pause(); mVideo.src = "";
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  clearGlb(); currentWord = null;
+}
+
+document.getElementById("closeBtn").onclick = closeModal;
+overlay.onclick = e => { if (e.target === overlay) closeModal(); };
+document.onkeydown = e => { if (e.key === "Escape") closeModal(); };
+
+// Video controls
+const btnPlay = document.getElementById("btnPlay");
+btnPlay.onclick = () => { mVideo.paused ? mVideo.play() : mVideo.pause(); };
+mVideo.addEventListener("play",  () => { btnPlay.textContent = "⏸ Tạm dừng"; });
+mVideo.addEventListener("pause", () => { btnPlay.textContent = "▶ Phát"; });
+
+document.getElementById("btnLoop").onclick = function() {
+  mVideo.loop = !mVideo.loop;
+  this.textContent = `🔁 Lặp: ${mVideo.loop ? "Bật" : "Tắt"}`;
+  this.classList.toggle("on", mVideo.loop);
+};
+
+function setSpeed(s) {
+  document.querySelectorAll("[data-speed]").forEach(b => b.classList.toggle("on", parseFloat(b.dataset.speed)===s));
+}
+document.querySelectorAll("[data-speed]").forEach(b => {
+  b.onclick = () => { mVideo.playbackRate = parseFloat(b.dataset.speed); setSpeed(parseFloat(b.dataset.speed)); };
+});
+
+// GLB controls
+document.getElementById("btnAutoRot").onclick = function() {
+  autoRot = !autoRot; if (controls) controls.autoRotate = autoRot;
+  this.textContent = `↻ Auto-rotate: ${autoRot?"Bật":"Tắt"}`; this.classList.toggle("on", autoRot);
+};
+document.getElementById("btnAnim").onclick = function() {
+  animPlay = !animPlay;
+  this.textContent = `⏸ Anim: ${animPlay?"Bật":"Tắt"}`; this.classList.toggle("on", animPlay);
+};
+document.getElementById("btnReset").onclick = () => {
+  if (!camera) return;
+  camera.position.set(0.019, 0.573, 3.365);
+  controls.target.set(0, 0.5, 0); controls.update();
+};
+
+window.addEventListener("resize", resize);
+</script>
+</body>
+</html>
