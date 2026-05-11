@@ -371,11 +371,9 @@
       <iframe id="frame-translate" src="./chatbot/main.html"></iframe>
     </div>
 
-  <div class="frame-wrap" id="frameWrap">
-    <iframe id="frame-learn" src="./learn/main.html"></iframe>
-    <iframe id="frame-quiz" src="./quiz/index.html"></iframe>
-    <iframe id="frame-translate" src="./translate/main.html"></iframe>
-  </div>
+    <script>
+      const TABS = ["learn", "quiz", "translate"];
+      let currentTab = null; // Lưu tab đang active
 
       function setActiveNav(name) {
         document.querySelectorAll(".nav-tab").forEach((btn) => {
