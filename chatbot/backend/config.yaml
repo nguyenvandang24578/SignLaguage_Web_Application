@@ -1,0 +1,5 @@
+path_dir: Data
+col_name: "vsl_knowledge_base"
+breakpoint_threshold_type: "percentile" # standard_deviation / interquartile / gradient
+breakpoint_threshold_amount: 95.0
+upsert_batch_size: 64

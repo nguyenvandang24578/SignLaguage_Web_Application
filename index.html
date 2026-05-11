@@ -1,313 +1,375 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="vi">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SignVN</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SignVN</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
-    body {
-      font-family: "Segoe UI", sans-serif;
-      background: #3A6EA5;
-      color: #fff;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    nav {
-      height: 68px;
-      background: rgba(30, 63, 107, 0.92);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 36px;
-      flex-shrink: 0;
-      border-bottom: 1px solid rgba(255,255,255,0.12);
-      backdrop-filter: blur(10px);
-      position: relative; /* Bắt buộc */
-      z-index: 999;       /* Đẩy nav lên trên cùng */
-    }
-
-    .logo {
-      font-size: 1.35rem;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-      cursor: pointer;
-    }
-
-    .logo span {
-      color: #ffffff;
-    }
-
-    .nav-tabs {
-      display: flex;
-      gap: 8px;
-    }
-
-    .nav-tab {
-      border: none;
-      background: transparent;
-      color: #EAF4FF;
-      padding: 10px 18px;
-      border-radius: 999px;
-      cursor: pointer;
-      font-size: 0.95rem;
-      font-weight: 600;
-      transition: all 0.22s ease;
-    }
-
-    .nav-tab:hover {
-      background: rgba(255,255,255,0.12);
-    }
-
-    .nav-tab.active {
-      background: #ffffff;
-      color: #3A6EA5;
-    }
-
-    .home-screen {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 48px 24px;
-      transition: opacity 0.35s ease, visibility 0.35s ease;
-    }
-
-    .home-screen.hidden {
-      opacity: 0;
-      visibility: hidden;
-      position: absolute;
-      pointer-events: none;
-    }
-
-    .hero {
-      width: 100%;
-      max-width: 1180px;
-      display: grid;
-      grid-template-columns: 1.1fr 0.9fr;
-      gap: 28px;
-      align-items: stretch;
-    }
-
-    .hero-left,
-    .hero-right {
-      background: rgba(255,255,255,0.10);
-      border: 1px solid rgba(255,255,255,0.16);
-      border-radius: 28px;
-      backdrop-filter: blur(14px);
-    }
-
-    .hero-left {
-      padding: 42px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
-
-    .eyebrow {
-      display: inline-block;
-      width: fit-content;
-      padding: 7px 14px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.16);
-      color: #F6FBFF;
-      font-size: 0.8rem;
-      font-weight: 700;
-      margin-bottom: 18px;
-    }
-
-    .hero-left h1 {
-      font-size: clamp(2rem, 5vw, 3.4rem);
-      line-height: 1.08;
-      margin-bottom: 16px;
-    }
-
-    .hero-left p {
-      color: #E3EEF9;
-      font-size: 1.02rem;
-      line-height: 1.7;
-      max-width: 620px;
-      margin-bottom: 26px;
-    }
-
-    .hero-actions {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .cta-main,
-    .cta-sub {
-      border: none;
-      border-radius: 14px;
-      padding: 13px 20px;
-      font-size: 0.95rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: transform 0.18s ease, opacity 0.18s ease, background 0.18s ease;
-    }
-
-    .cta-main {
-      background: #ffffff;
-      color: #3A6EA5;
-    }
-
-    .cta-sub {
-      background: rgba(255,255,255,0.14);
-      color: #fff;
-      border: 1px solid rgba(255,255,255,0.18);
-    }
-
-    .cta-main:hover,
-    .cta-sub:hover {
-      transform: translateY(-2px);
-    }
-
-    .hero-right {
-      padding: 24px;
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 16px;
-    }
-
-    .mode-card {
-      background: rgba(255,255,255,0.10);
-      border: 1px solid rgba(255,255,255,0.16);
-      border-radius: 22px;
-      padding: 22px;
-      cursor: pointer;
-      transition: transform 0.22s ease, background 0.22s ease, border-color 0.22s ease;
-    }
-
-    .mode-card:hover {
-      transform: translateY(-4px);
-      background: rgba(255,255,255,0.16);
-      border-color: rgba(255,255,255,0.28);
-    }
-
-    .mode-icon {
-      font-size: 1.8rem;
-      margin-bottom: 10px;
-    }
-
-    .mode-title {
-      font-size: 1.15rem;
-      font-weight: 800;
-      margin-bottom: 8px;
-    }
-
-    .mode-desc {
-      color: #E3EEF9;
-      font-size: 0.93rem;
-      line-height: 1.6;
-    }
-
-    .frame-wrap {
-      flex: 1;
-      position: relative;
-      display: none;
-      /* Giới hạn chiều cao để không tràn lên nav */
-      height: calc(100vh - 68px); 
-      overflow: hidden;
-    }
-
-    .frame-wrap.show {
-      display: block;
-    }
-
-    iframe {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      border: none;
-      opacity: 0;
-      /* Khi ẩn thì không nhận click */
-      pointer-events: none; 
-      transition: opacity 0.35s ease;
-      background: transparent;
-    }
-
-    iframe.active {
-      opacity: 1;
-      /* Khi hiện thì nhận click NHƯNG CHỈ TRONG VÙNG CỦA NÓ (dưới nav) */
-      pointer-events: auto; 
-    }
-
-    @media (max-width: 920px) {
-      .hero {
-        grid-template-columns: 1fr;
+      body {
+        font-family: "Segoe UI", sans-serif;
+        background: #3a6ea5;
+        color: #fff;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
       }
 
       nav {
-        padding: 0 18px;
+        height: 68px;
+        background: rgba(30, 63, 107, 0.92);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 36px;
+        flex-shrink: 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(10px);
+        position: relative; /* Bắt buộc */
+        z-index: 999; /* Đẩy nav lên trên cùng */
+      }
+
+      .logo {
+        font-size: 1.35rem;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        cursor: pointer;
+      }
+
+      .logo span {
+        color: #ffffff;
       }
 
       .nav-tabs {
-        gap: 4px;
+        display: flex;
+        gap: 8px;
       }
 
       .nav-tab {
-        padding: 8px 12px;
-        font-size: 0.85rem;
+        border: none;
+        background: transparent;
+        color: #eaf4ff;
+        padding: 10px 18px;
+        border-radius: 999px;
+        cursor: pointer;
+        font-size: 0.95rem;
+        font-weight: 600;
+        transition: all 0.22s ease;
+      }
+
+      .nav-tab:hover {
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .nav-tab.active {
+        background: #ffffff;
+        color: #3a6ea5;
+      }
+
+      .home-screen {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 48px 24px;
+        transition:
+          opacity 0.35s ease,
+          visibility 0.35s ease;
+      }
+
+      .home-screen.hidden {
+        opacity: 0;
+        visibility: hidden;
+        position: absolute;
+        pointer-events: none;
+      }
+
+      .hero {
+        width: 100%;
+        max-width: 1180px;
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 28px;
+        align-items: stretch;
+      }
+
+      .hero-left,
+      .hero-right {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 28px;
+        backdrop-filter: blur(14px);
       }
 
       .hero-left {
-        padding: 28px;
+        padding: 42px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
       }
-    }
-  </style>
-</head>
-<body>
-  <nav>
-    <!-- ✅ Sửa: đóng thẻ .logo trước .nav-tabs -->
-    <div class="logo" onclick="goHome()">Sign<span>VN</span></div>
-    <div class="nav-tabs">
-      <!-- ✅ Sửa: thêm data-tab để setActiveNav hoạt động đúng -->
-      <button class="nav-tab active" data-tab="home" onclick="goHome()">🏠 Trang chủ</button>
-      <button class="nav-tab" data-tab="learn" onclick="go('learn')">📖 Học</button>
-      <button class="nav-tab" data-tab="quiz" onclick="go('quiz')">✏️ Kiểm tra</button>
-      <button class="nav-tab" data-tab="translate" onclick="go('translate')">💬 Phiên dịch</button>
-    </div>
-  </nav>
 
-  <section class="home-screen" id="homeScreen">
-    <div class="hero">
-      <div class="hero-left">
-        <div class="eyebrow">Nền tảng học ngôn ngữ ký hiệu</div>
-        <h1>Học, luyện tập và phiên dịch ngôn ngữ ký hiệu trong một nơi.</h1>
-        <p>Website này giúp người dùng tiếp cận ngôn ngữ ký hiệu qua thư viện bài học, phần kiểm tra tương tác và chế độ phiên dịch câu thành chuỗi ký hiệu trực quan.</p>
-        <div class="hero-actions">
-          <button class="cta-main" onclick="go('learn')">Bắt đầu học</button>
-          <button class="cta-sub" onclick="go('translate')">Mở phiên dịch</button>
+      .eyebrow {
+        display: inline-block;
+        width: fit-content;
+        padding: 7px 14px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.16);
+        color: #f6fbff;
+        font-size: 0.8rem;
+        font-weight: 700;
+        margin-bottom: 18px;
+      }
+
+      .hero-left h1 {
+        font-size: clamp(2rem, 5vw, 3.4rem);
+        line-height: 1.08;
+        margin-bottom: 16px;
+      }
+
+      .hero-left p {
+        color: #e3eef9;
+        font-size: 1.02rem;
+        line-height: 1.7;
+        max-width: 620px;
+        margin-bottom: 26px;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .cta-main,
+      .cta-sub {
+        border: none;
+        border-radius: 14px;
+        padding: 13px 20px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition:
+          transform 0.18s ease,
+          opacity 0.18s ease,
+          background 0.18s ease;
+      }
+
+      .cta-main {
+        background: #ffffff;
+        color: #3a6ea5;
+      }
+
+      .cta-sub {
+        background: rgba(255, 255, 255, 0.14);
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+      }
+
+      .cta-main:hover,
+      .cta-sub:hover {
+        transform: translateY(-2px);
+      }
+
+      .hero-right {
+        padding: 24px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+
+      .mode-card {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 22px;
+        padding: 22px;
+        cursor: pointer;
+        transition:
+          transform 0.22s ease,
+          background 0.22s ease,
+          border-color 0.22s ease;
+      }
+
+      .mode-card:hover {
+        transform: translateY(-4px);
+        background: rgba(255, 255, 255, 0.16);
+        border-color: rgba(255, 255, 255, 0.28);
+      }
+
+      .mode-icon {
+        font-size: 1.8rem;
+        margin-bottom: 10px;
+      }
+
+      .mode-title {
+        font-size: 1.15rem;
+        font-weight: 800;
+        margin-bottom: 8px;
+      }
+
+      .mode-desc {
+        color: #e3eef9;
+        font-size: 0.93rem;
+        line-height: 1.6;
+      }
+
+      .frame-wrap {
+        flex: 1;
+        position: relative;
+        display: none;
+        /* Giới hạn chiều cao để không tràn lên nav */
+        height: calc(100vh - 68px);
+        overflow: hidden;
+      }
+
+      .frame-wrap.show {
+        display: block;
+      }
+
+      iframe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border: none;
+        opacity: 0;
+        /* Khi ẩn thì không nhận click */
+        pointer-events: none;
+        transition: opacity 0.35s ease;
+        background: transparent;
+      }
+
+      iframe.active {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      @media (max-width: 920px) {
+        .hero {
+          grid-template-columns: 1fr;
+        }
+
+        nav {
+          padding: 0 18px;
+        }
+
+        .nav-tabs {
+          gap: 4px;
+        }
+
+        .nav-tab {
+          padding: 8px 12px;
+          font-size: 0.85rem;
+        }
+
+        .hero-left {
+          padding: 28px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <div class="logo" onclick="goHome()">Sign<span>VN</span></div>
+      <div class="nav-tabs">
+        <button
+          class="nav-tab active"
+          data-tab="home"
+          type="button"
+          tabindex="-1"
+          onclick="goHome()"
+        >
+          🏠 Trang chủ
+        </button>
+        <button
+          class="nav-tab"
+          data-tab="learn"
+          type="button"
+          tabindex="-1"
+          onclick="go('learn')"
+        >
+          📖 Học
+        </button>
+        <button
+          class="nav-tab"
+          data-tab="quiz"
+          type="button"
+          tabindex="-1"
+          onclick="go('quiz')"
+        >
+          ✏️ Kiểm tra
+        </button>
+        <button
+          class="nav-tab"
+          data-tab="translate"
+          type="button"
+          tabindex="-1"
+          onclick="go('translate')"
+        >
+          💬 VieSign Assistant
+        </button>
+      </div>
+    </nav>
+
+    <section class="home-screen" id="homeScreen">
+      <div class="hero">
+        <div class="hero-left">
+          <div class="eyebrow">Nền tảng học ngôn ngữ ký hiệu</div>
+          <h1>Học, luyện tập với Trợ lý ngôn ngữ ký hiệu trong một nơi.</h1>
+          <p>
+            Website này giúp người dùng tiếp cận ngôn ngữ ký hiệu qua thư viện
+            bài học, phần kiểm tra, tương tác với trợ lý ảo giải đáphiệu mọi
+            thắc mắc về ngôn ngữ ký hiệu.
+          </p>
+          <div class="hero-actions">
+            <button class="cta-main" onclick="go('learn')">Bắt đầu học</button>
+            <button class="cta-sub" onclick="go('translate')">
+              VieSign Assistant
+            </button>
+          </div>
+        </div>
+
+        <div class="hero-right">
+          <div class="mode-card" onclick="go('learn')">
+            <div class="mode-icon">📖</div>
+            <div class="mode-title">Chế độ Học</div>
+            <div class="mode-desc">
+              Xem từ vựng, video minh họa và mô hình 3D để quan sát ký hiệu rõ
+              ràng hơn.
+            </div>
+          </div>
+
+          <div class="mode-card" onclick="go('quiz')">
+            <div class="mode-icon">✏️</div>
+            <div class="mode-title">Chế độ Kiểm tra</div>
+            <div class="mode-desc">
+              Làm bài tập nhanh từ video ký hiệu để ghi nhớ tốt hơn và theo dõi
+              mức độ nhận biết.
+            </div>
+          </div>
+
+          <div class="mode-card" onclick="go('translate')">
+            <div class="mode-icon">💬</div>
+            <div class="mode-title">VieSign Assistant</div>
+            <div class="mode-desc">
+              Nhập câu tiếng Việt để hệ thống phân tách và phát tuần tự các ký
+              hiệu có trong kho dữ liệu.
+            </div>
+          </div>
         </div>
       </div>
+    </section>
 
-      <div class="hero-right">
-        <div class="mode-card" onclick="go('learn')">
-          <div class="mode-icon">📖</div>
-          <div class="mode-title">Chế độ Học</div>
-          <div class="mode-desc">Xem từ vựng, video minh họa và mô hình 3D để quan sát ký hiệu rõ ràng hơn.</div>
-        </div>
-
-        <div class="mode-card" onclick="go('quiz')">
-          <div class="mode-icon">✏️</div>
-          <div class="mode-title">Chế độ Kiểm tra</div>
-          <div class="mode-desc">Làm bài tập nhanh từ video ký hiệu để ghi nhớ tốt hơn và theo dõi mức độ nhận biết.</div>
-        </div>
-
-        <div class="mode-card" onclick="go('translate')">
-          <div class="mode-icon">💬</div>
-          <div class="mode-title">Chế độ Phiên dịch</div>
-          <div class="mode-desc">Nhập câu tiếng Việt để hệ thống phân tách và phát tuần tự các ký hiệu có trong kho dữ liệu.</div>
-        </div>
-      </div>
+    <div class="frame-wrap" id="frameWrap">
+      <iframe id="frame-learn" src="./learn/main.html"></iframe>
+      <iframe id="frame-quiz" src="./quiz/main.html"></iframe>
+      <iframe id="frame-translate" src="./chatbot/main.html"></iframe>
     </div>
-  </section>
 
   <div class="frame-wrap" id="frameWrap">
     <iframe id="frame-learn" src="./learn/main.html"></iframe>
@@ -315,36 +377,56 @@
     <iframe id="frame-translate" src="./translate/main.html"></iframe>
   </div>
 
-  <script>
-    const TABS = ["learn", "quiz", "translate"];
+      function setActiveNav(name) {
+        document.querySelectorAll(".nav-tab").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.tab === name);
+        });
+      }
 
-    // ✅ Sửa: dùng data-tab thay vì đếm index để tránh lệch
-    function setActiveNav(name) {
-      document.querySelectorAll(".nav-tab").forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.tab === name);
+      function go(name) {
+        currentTab = name;
+
+        document.getElementById("homeScreen").classList.add("hidden");
+        document.getElementById("frameWrap").classList.add("show");
+
+        TABS.forEach((tab) => {
+          document
+            .getElementById("frame-" + tab)
+            .classList.toggle("active", tab === name);
+        });
+
+        setActiveNav(name);
+
+        // Chỉ blur nav buttons, KHÔNG focus vào iframe
+        // để tránh gây ra blur/focus chain làm reset state
+        document.querySelectorAll(".nav-tab").forEach((b) => b.blur());
+      }
+
+      function goHome() {
+        currentTab = null;
+
+        document.getElementById("homeScreen").classList.remove("hidden");
+        document.getElementById("frameWrap").classList.remove("show");
+        setActiveNav("home");
+
+        TABS.forEach((tab) => {
+          document.getElementById("frame-" + tab).classList.remove("active");
+        });
+
+        if (document.activeElement) document.activeElement.blur();
+      }
+
+      // Ngăn iframe mất active khi focus thay đổi bên trong nó
+      window.addEventListener("blur", () => {
+        // Window mất focus (thường do focus vào iframe content)
+        // → không làm gì, giữ nguyên currentTab
       });
-    }
 
-    function go(name) {
-      document.getElementById("homeScreen").classList.add("hidden");
-      document.getElementById("frameWrap").classList.add("show");
-
-      TABS.forEach(tab => {
-        document.getElementById("frame-" + tab).classList.toggle("active", tab === name);
+      // Nếu có postMessage từ iframe (ví dụ muốn đổi tab), xử lý ở đây
+      window.addEventListener("message", (e) => {
+        if (e.data && e.data.action === "goHome") goHome();
+        if (e.data && e.data.action === "go" && e.data.tab) go(e.data.tab);
       });
-
-      setActiveNav(name);
-    }
-
-    function goHome() {
-      document.getElementById("homeScreen").classList.remove("hidden");
-      document.getElementById("frameWrap").classList.remove("show");
-      setActiveNav("home");
-
-      TABS.forEach(tab => {
-        document.getElementById("frame-" + tab).classList.remove("active");
-      });
-    }
-  </script>
-</body>
+    </script>
+  </body>
 </html>

@@ -3,100 +3,66 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="SignVN — Học Ngôn Ngữ Ký Hiệu Việt Nam theo chủ đề" />
   <title>SignVN — Học Ngôn Ngữ Ký Hiệu</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="./learn.css">
 </head>
 <body>
-<main>
-  <h1>Thư viện <span>Ngôn ngữ Ký hiệu</span></h1>
-  <p class="subtitle">Chọn một từ để xem video hoặc mô hình 3D ký hiệu</p>
-  <div class="word-grid" id="wordGrid"></div>
-</main>
 
-<!-- MODAL -->
-<div class="overlay" id="overlay">
-  <div class="modal">
-
-    <div class="modal-header">
-      <div>
-        <div class="modal-title" id="modalTitle">—</div>
-        <div class="modal-topic" id="modalTopic">—</div>
-      </div>
-      <button class="close-btn" id="closeBtn">✕</button>
-    </div>
-
-    <!-- Tab bar -->
-    <div class="tab-bar">
-      <button class="tab-btn active" id="tabVideo" onclick="switchTab('video')">▶ Video</button>
-      <button class="tab-btn"        id="tabGlb"   onclick="switchTab('glb')">⬡ 3D Interactive</button>
-    </div>
-
-    <!-- Viewer -->
-    <div class="viewer-area">
-
-      <!-- VIDEO -->
-      <div id="videoPanel">
-        <div class="video-wrap">
-          <video class="modal-video" id="modalVideo" autoplay loop playsinline></video>
-          <div class="no-media" id="noVideo">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
-              <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M10 10l4 2-4 2v-4z"/>
-              <line x1="3" y1="3" x2="21" y2="21"/>
-            </svg>
-            Chưa có video — đặt file vào:<br><code id="noVideoPath"></code>
-          </div>
+  <main>
+    <!-- Page Header -->
+    <header class="page-header">
+      <div class="page-header-inner">
+        <div class="page-logo">
+          <span class="logo-icon">🤟</span>
+          <span class="logo-text">SignVN</span>
+        </div>
+        <div class="page-header-text">
+          <h1>Học theo chủ đề</h1>
+          <p>Chọn chủ đề bạn muốn học để bắt đầu hành trình khám phá ngôn ngữ ký hiệu Việt Nam.</p>
         </div>
       </div>
+    </header>
 
-      <!-- GLB / Three.js -->
-      <div id="glbPanel" style="position:relative">
-        <canvas id="threeCanvas"></canvas>
-        <div class="glb-hint">🖱 Kéo để xoay · Scroll để zoom</div>
-        <div class="no-media" id="noGlb">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-            <line x1="3" y1="3" x2="21" y2="21"/>
-          </svg>
-          Chưa có file GLB — đặt file vào:<br><code id="noGlbPath"></code>
+    <!-- App Body -->
+    <div class="app-body">
+
+      <!-- Left Sidebar -->
+      <aside class="sidebar" aria-label="Danh sách chủ đề">
+        <div class="section-label">Danh sách chủ đề</div>
+        <nav class="topic-nav" id="topicNav" role="list"></nav>
+      </aside>
+
+      <!-- Right Content -->
+      <div class="content-area" role="main">
+        <div class="section-label">Chủ đề đang học</div>
+        <div class="featured-card" id="featuredCard" aria-live="polite">
+          <!-- populated by JS -->
         </div>
-      </div>
+      </div>  
 
-    </div><!-- /viewer-area -->
-
-    <!-- Controls -->
-    <div class="controls">
-      <!-- Video controls -->
-      <div id="videoControls">
-        <button class="ctrl-btn" id="btnPlay">⏸ Tạm dừng</button>
-        <button class="ctrl-btn on"  id="btnLoop">🔁 Lặp: Bật</button>
-        <div class="sep"></div>
-        <span class="speed-label">Tốc độ:</span>
-        <button class="ctrl-btn" data-speed="0.5">0.5×</button>
-        <button class="ctrl-btn on" data-speed="1">1×</button>
-        <button class="ctrl-btn" data-speed="1.5">1.5×</button>
-      </div>
-      <!-- GLB controls -->
-      <div id="glbControls">
-        <button class="ctrl-btn on" id="btnAutoRotate">↻ Auto-rotate: Bật</button>
-        <button class="ctrl-btn on" id="btnPlayAnim">⏸ Animation: Bật</button>
-        <button class="ctrl-btn" id="btnResetCam">⌖ Reset góc nhìn</button>
-      </div>
     </div>
+  </main>
 
-    <div class="modal-desc" id="modalDesc">—</div>
-  </div>
-</div>
+  <!-- ONNX Runtime (loaded as classic script so .wasm files resolve correctly) -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
 
-<!-- Three.js via CDN -->
-<script type="importmap">
-{
-  "imports": {
-    "three":              "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
-    "three/addons/":      "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  <!-- Import Map for Three.js -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three":         "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+    }
   }
-}
-</script>
+  </script>
+  <script type="module" src="./learn.js"></script>
 
-<script type="module" src="./learn.js"></script>
 </body>
 </html>
