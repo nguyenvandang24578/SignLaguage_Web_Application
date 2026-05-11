@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiểm Tra Ký Hiệu | Sign Language Web</title>
+    <link rel="stylesheet" href="quiz.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="animated-sign-bg">
+        <img src="imgs/hello.png" alt="" class="sign-image shape-1">
+        <img src="imgs/heart.png" alt="" class="sign-image shape-2">
+        <img src="imgs/signs.png" alt="" class="sign-image shape-3">
+        <img src="imgs/today.png" alt="" class="sign-image shape-4">
+        <img src="imgs/interpreter.png" alt="" class="sign-image shape-5">
+    </div>
+
+    <main class="container">
+        <!-- HEADER -->
+        <div class="page-header">
+            <div class="header-left">
+                <button id="back-btn" class="back-btn-outline" style="display: none;">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <h1 id="header-title">Trạm Kiểm Tra Năng Lực</h1>
+            </div>
+            <div class="header-right" id="score-display" style="display: none;">
+                <div class="score-pill correct">
+                    <i class="fas fa-check"></i> <span id="score-correct">0</span>
+                </div>
+                <div class="score-pill wrong">
+                    <i class="fas fa-times"></i> <span id="score-wrong">0</span>
+                </div>
+                <div class="score-pill total">
+                    <span id="score-progress">0</span>/<span id="score-total">10</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- PROGRESS BAR -->
+        <div id="quiz-progress-bar" class="quiz-progress-bar" style="display: none;">
+            <div class="progress-track">
+                <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- ==========================================
+             SCREEN 1: MAIN MENU
+             ========================================== -->
+        <div id="screen-main-menu" class="screen active">
+            <h2 class="screen-title">Bạn muốn rèn luyện kỹ năng nào?</h2>
+            <div class="card-grid">
+                <div class="card card-quiz" onclick="switchScreen('screen-quiz-setup')">
+                    <div class="card-glow"></div>
+                    <div class="icon-wrapper"><i class="fas fa-hands-asl-interpreting"></i></div>
+                    <h3>Giải Mã Ký Hiệu</h3>
+                    <p>Xem video cử chỉ ngôn ngữ ký hiệu và chọn đáp án đúng. Rèn luyện phản xạ đọc hiểu.</p>
+                    <div class="card-tag">Quiz trắc nghiệm</div>
+                </div>
+
+                <div class="card card-practice" onclick="switchScreen('screen-practice-menu')">
+                    <div class="card-glow"></div>
+                    <div class="icon-wrapper"><i class="fas fa-video"></i></div>
+                    <h3>Thực Hành Cùng AI</h3>
+                    <p>Bật Camera, hệ thống AI phân tích cử chỉ và chấm điểm thời gian thực.</p>
+                    <div class="card-tag">Camera + AI</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==========================================
+             SCREEN 1.5: QUIZ SETUP
+             ========================================== -->
+        <div id="screen-quiz-setup" class="screen">
+            <h2 class="screen-title">Cài đặt bài kiểm tra</h2>
+            <div class="setup-box">
+                <div class="setup-section">
+                    <label class="setup-label"><i class="fas fa-layer-group"></i> Chủ đề từ vựng</label>
+                    <div class="chip-group" id="topic-chips">
+                        <button class="chip active" data-topic="all">Tất cả (49 từ)</button>
+                        <button class="chip" data-topic="body">Cơ thể</button>
+                        <button class="chip" data-topic="action">Hành động</button>
+                        <button class="chip" data-topic="object">Đồ vật</button>
+                        <button class="chip" data-topic="emotion">Cảm xúc</button>
+                        <button class="chip" data-topic="hygiene">Vệ sinh</button>
+                    </div>
+                </div>
+
+                <div class="setup-section">
+                    <label class="setup-label"><i class="fas fa-list-ol"></i> Số câu hỏi</label>
+                    <div class="chip-group" id="count-chips">
+                        <button class="chip" data-count="5">5 câu</button>
+                        <button class="chip active" data-count="10">10 câu</button>
+                        <button class="chip" data-count="20">20 câu</button>
+                        <button class="chip" data-count="49">Toàn bộ</button>
+                    </div>
+                </div>
+
+                <div class="setup-section">
+                    <label class="setup-label"><i class="fas fa-clock"></i> Giới hạn thời gian</label>
+                    <div class="chip-group" id="timer-chips">
+                        <button class="chip active" data-timer="0">Không giới hạn</button>
+                        <button class="chip" data-timer="10">10 giây / câu</button>
+                        <button class="chip" data-timer="5">5 giây / câu</button>
+                    </div>
+                </div>
+
+                <button class="start-quiz-btn" onclick="launchQuiz()">
+                    <i class="fas fa-play"></i> Bắt Đầu Kiểm Tra
+                </button>
+            </div>
+        </div>
+
+        <!-- ==========================================
+             SCREEN 2: PRACTICE MENU
+             ========================================== -->
+        <div id="screen-practice-menu" class="screen">
+            <h2 class="screen-title">Chọn giáo án luyện tập</h2>
+            <div class="card-grid card-grid-3">
+                <div class="card card-specific" onclick="startPractice('specific')">
+                    <div class="card-glow"></div>
+                    <div class="icon-wrapper"><i class="fas fa-hand-sparkles"></i></div>
+                    <h3>Luyện Tập Chỉ Định</h3>
+                    <p>Chọn một từ cụ thể và múa lại cho đến khi AI nhận dạng chuẩn xác.</p>
+                    <div class="card-tag">Tự chọn từ</div>
+                </div>
+
+                <div class="card card-random" onclick="startPractice('random-single')">
+                    <div class="card-glow"></div>
+                    <div class="icon-wrapper"><i class="fas fa-shuffle"></i></div>
+                    <h3>Một Từ Ngẫu Nhiên</h3>
+                    <p>AI ra đề một từ ngẫu nhiên, luyện đến khi đúng thì dừng.</p>
+                    <div class="card-tag">Tự do</div>
+                </div>
+
+                <div class="card card-challenge" onclick="startPractice('challenge')">
+                    <div class="card-glow"></div>
+                    <div class="icon-wrapper"><i class="fas fa-trophy"></i></div>
+                    <h3>Thử Thách Có Chấm Điểm</h3>
+                    <p>Bài kiểm tra N từ ngẫu nhiên, có video mẫu, AI chấm điểm cuối.</p>
+                    <div class="card-tag">5/10/20 từ</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==========================================
+             SCREEN 2.5: CHALLENGE SETUP
+             ========================================== -->
+        <div id="screen-challenge-setup" class="screen">
+            <h2 class="screen-title">Cài đặt thử thách</h2>
+            <div class="setup-box">
+                <div class="setup-section">
+                    <label class="setup-label"><i class="fas fa-list-ol"></i> Số từ thử thách</label>
+                    <div class="chip-group" id="challenge-count-chips">
+                        <button class="chip active" data-count="5">5 từ</button>
+                        <button class="chip" data-count="10">10 từ</button>
+                        <button class="chip" data-count="20">20 từ</button>
+                    </div>
+                </div>
+
+                <div class="setup-info">
+                    <i class="fas fa-info-circle"></i>
+                    <div>
+                        Mỗi từ sẽ hiện video mẫu để bạn quan sát rồi thực hiện trước camera.
+                        AI sẽ chấm pass/fail và tự động chuyển sang từ tiếp theo khi bạn làm đúng.
+                        Có thể bỏ qua nếu thấy khó.
+                    </div>
+                </div>
+
+                <button class="start-quiz-btn" onclick="launchChallenge()">
+                    <i class="fas fa-play"></i> Bắt Đầu Thử Thách
+                </button>
+            </div>
+        </div>
+
+        <!-- ==========================================
+             SCREEN 3: QUIZ
+             ========================================== -->
+        <div id="screen-quiz" class="screen">
+            <div class="quiz-box">
+                <div class="quiz-top-bar">
+                    <div class="question-counter" id="question-counter">Câu 1 / 10</div>
+                    <div class="timer-display" id="timer-display" style="display: none;">
+                        <i class="fas fa-clock"></i> <span id="timer-seconds">10</span>s
+                    </div>
+                </div>
+                <div class="video-container" id="video-container">
+                    <div class="video-placeholder">
+                        <i class="fas fa-play-circle"></i>
+                        <p>Video cử chỉ sẽ hiển thị tại đây</p>
+                    </div>
+                </div>
+                <h3 class="question-text">Cử chỉ trong video mang ý nghĩa gì?</h3>
+                <div class="options-grid" id="options-grid"></div>
+                <div id="next-btn-container" style="display: none;">
+                    <button id="next-question-btn" class="next-btn">
+                        Câu tiếp theo <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==========================================
+             SCREEN 4: RESULTS
+             ========================================== -->
+        <div id="screen-results" class="screen">
+            <div class="results-box" id="results-box"></div>
+        </div>
+
+        <!-- ==========================================
+             SCREEN 5: PRACTICE (Camera + AI)
+             ========================================== -->
+        <div id="screen-practice" class="screen">
+            <div class="practice-box">
+                <!-- Header: target word + state pill -->
+                <div class="practice-header">
+                    <div class="practice-target">
+                        <span class="label">Hãy múa:</span>
+                        <span class="word" id="target-word">ĐANG TẢI...</span>
+                    </div>
+                    <div class="practice-state-pill idle" id="state-pill">
+                        <i class="fas fa-circle-notch fa-spin"></i> Chờ kết nối
+                    </div>
+                </div>
+
+                <!-- Camera status -->
+                <div class="camera-status connecting" id="camera-status" style="display:none;">
+                    <i class="fas fa-spinner fa-spin"></i> Đang kết nối Camera...
+                </div>
+
+                <!-- Dual-panel layout: camera (always) + reference (challenge only) -->
+                <div class="practice-stage">
+                    <!-- Camera (skeleton overlay removed - was misaligned due to mirror+scale) -->
+                    <div class="camera-wrapper" id="camera-wrapper">
+                        <video id="webcam-video" autoplay playsinline muted></video>
+                        <div class="collect-bar-overlay">
+                            <div class="collect-bar-fill" id="collect-bar"></div>
+                        </div>
+                        <div class="countdown-overlay" id="countdown-overlay"></div>
+                        <div class="success-overlay" id="success-overlay">
+                            <i class="fas fa-check-circle"></i>
+                            <span>CHÍNH XÁC!</span>
+                        </div>
+                    </div>
+
+                    <!-- Challenge reference video (shown only in challenge mode) -->
+                    <div class="challenge-reference" id="challenge-reference" style="display:none;"></div>
+                </div>
+
+                <!-- AI predictions -->
+                <div class="ai-panel" id="ai-panel">
+                    <div class="ai-prediction-card" id="pred-1">
+                        <div class="rank">Top 1</div>
+                        <div class="word">—</div>
+                        <div class="score">0%</div>
+                    </div>
+                    <div class="ai-prediction-card" id="pred-2">
+                        <div class="rank">Top 2</div>
+                        <div class="word">—</div>
+                        <div class="score">0%</div>
+                    </div>
+                    <div class="ai-prediction-card" id="pred-3">
+                        <div class="rank">Top 3</div>
+                        <div class="word">—</div>
+                        <div class="score">0%</div>
+                    </div>
+                </div>
+
+                <!-- Action buttons -->
+                <div class="practice-actions" id="practice-actions">
+                    <button class="practice-btn stop" onclick="stopPractice()">
+                        <i class="fas fa-stop"></i> Dừng lại
+                    </button>
+                    <button class="practice-btn retry" onclick="retryPractice()" style="display:none;" id="btn-retry">
+                        <i class="fas fa-redo"></i> Thử lại
+                    </button>
+                    <button class="practice-btn new-word" onclick="goBackFromPractice()" style="display:none;" id="btn-new-word">
+                        <i class="fas fa-random"></i> Từ khác
+                    </button>
+                    <button class="practice-btn skip" onclick="skipChallengeWord()" id="btn-skip-challenge">
+                        <i class="fas fa-forward"></i> Bỏ qua từ này
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- MODAL: CHỌN TỪ -->
+    <div id="custom-prompt-modal" class="modal-overlay">
+        <div class="modal-card">
+            <h3><i class="fas fa-hand-sparkles"></i> Luyện Tập Chỉ Định</h3>
+            <p>Chọn từ vựng bạn muốn AI kiểm tra:</p>
+            <div class="vocab-quick-pick" id="vocab-quick-pick"></div>
+            <div class="modal-divider">hoặc nhập tùy chọn</div>
+            <input type="text" id="custom-prompt-input" placeholder="VD: CHÀO, ĂN, UỐNG..." autocomplete="off">
+            <div class="modal-actions">
+                <button id="modal-cancel-btn" class="modal-btn cancel">Hủy bỏ</button>
+                <button id="modal-submit-btn" class="modal-btn submit">
+                    <i class="fas fa-play"></i> Bắt đầu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="quiz.js"></script>
+</body>
+</html>
