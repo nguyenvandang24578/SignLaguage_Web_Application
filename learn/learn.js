@@ -37,9 +37,6 @@ const TOPICS = [
       { label: 'Mắt',      videoFile: 'mat.mp4',       glbFile: 'mat.glb',      desc: '<strong>Mô tả:</strong> Trỏ hai ngón vào mắt.' },
       { label: 'Miệng',    videoFile: 'mieng.mp4',     glbFile: 'mieng.glb',    desc: '<strong>Mô tả:</strong> Vẽ vòng tròn quanh miệng.' },
       { label: 'Mũi',      videoFile: 'mui.mp4',       glbFile: 'mui.glb',      desc: '<strong>Mô tả:</strong> Chạm ngón trỏ vào đầu mũi.' },
-      { label: 'Tai',      videoFile: 'tai.mp4',       glbFile: 'tai.glb',      desc: '<strong>Mô tả:</strong> Chạm ngón trỏ và ngón cái vào dái tai.' },
-      { label: 'Tay',      videoFile: 'tay.mp4',       glbFile: 'tay.glb',      desc: '<strong>Mô tả:</strong> Tay này chỉ vào lòng bàn tay kia.' },
-      { label: 'Tóc',      videoFile: 'toc.mp4',       glbFile: 'toc.glb',      desc: '<strong>Mô tả:</strong> Kéo nhẹ mấy sợi tóc.' },
     ],
   },
   {
@@ -49,16 +46,13 @@ const TOPICS = [
     desc: 'Các ký hiệu về hoạt động thể chất và vận động hàng ngày.',
     words: [
       { label: 'Ăn',   videoFile: 'an.mp4',    glbFile: 'an.glb',    desc: '<strong>Mô tả:</strong> Đưa các ngón tay chụm lại gần miệng, lặp lại 2–3 lần.' },
-      { label: 'Uống', videoFile: 'uong.mp4',  glbFile: 'uong.glb',  desc: '<strong>Mô tả:</strong> Giả vờ cầm cốc đưa lên miệng.' },
-      { label: 'Đi',   videoFile: 'di.mp4',    glbFile: 'di.glb',    desc: '<strong>Mô tả:</strong> Hai ngón trỏ và giữa mô phỏng chân bước đi.' },
       { label: 'Chạy', videoFile: 'chay.mp4',  glbFile: 'chay.glb',  desc: '<strong>Mô tả:</strong> Hai tay đánh nhanh qua lại như chạy.' },
+      { label: 'Đi',   videoFile: 'di.mp4',    glbFile: 'di.glb',    desc: '<strong>Mô tả:</strong> Hai ngón trỏ và giữa mô phỏng chân bước đi.' },
+      { label: 'Đứng', videoFile: 'dung.mp4',  glbFile: 'dung.glb',  desc: '<strong>Mô tả:</strong> Hai ngón đứng thẳng trên lòng bàn tay kia.' },
+      { label: 'Nằm',  videoFile: 'nam.mp4',   glbFile: 'nam.glb',   desc: '<strong>Mô tả:</strong> Tay nằm ngang, ngón trỏ và giữa duỗi ra.' },
+      { label: 'Ngồi', videoFile: 'ngoi.mp4',  glbFile: 'ngoi.glb',  desc: '<strong>Mô tả:</strong> Hai ngón gập xuống trên lòng bàn tay kia.' },
       { label: 'Ngủ',  videoFile: 'ngu.mp4',   glbFile: 'ngu.glb',   desc: '<strong>Mô tả:</strong> Nghiêng đầu, áp má vào lòng bàn tay.' },
-      { label: 'Học',  videoFile: 'hoc.mp4',   glbFile: 'hoc.glb',   desc: '<strong>Mô tả:</strong> Hai tay mô phỏng mở sách.' },
-      { label: 'Viết', videoFile: 'viet.mp4',  glbFile: 'viet.glb',  desc: '<strong>Mô tả:</strong> Mô phỏng cầm bút viết lên lòng bàn tay kia.' },
-      { label: 'Đọc',  videoFile: 'doc.mp4',   glbFile: 'doc.glb',   desc: '<strong>Mô tả:</strong> Hai ngón chạy dọc theo lòng bàn tay.' },
-      { label: 'Nói',  videoFile: 'noi.mp4',   glbFile: 'noi.glb',   desc: '<strong>Mô tả:</strong> Tay mở gần miệng, mô phỏng miệng nói.' },
-      { label: 'Nghe', videoFile: 'nghe.mp4',  glbFile: 'nghe.glb',  desc: '<strong>Mô tả:</strong> Chạm ngón trỏ vào tai.' },
-      { label: 'Nhìn', videoFile: 'nhin.mp4',  glbFile: 'nhin.glb',  desc: '<strong>Mô tả:</strong> Trỏ hai ngón từ mắt ra ngoài.' },
+      { label: 'Nhảy', videoFile: 'nhay.mp4',  glbFile: 'nhay.glb',  desc: '<strong>Mô tả:</strong> Hai ngón bật lên từ lòng bàn tay.' },
     ],
   },
   {
@@ -67,76 +61,72 @@ const TOPICS = [
     icon: '🧴', iconBg: '#ede8f8', level: 'Cơ bản',
     desc: 'Ký hiệu về các hoạt động vệ sinh và sinh hoạt hàng ngày.',
     words: [
-      { label: 'Tắm',       videoFile: 'tam.mp4',       glbFile: 'tam.glb',       desc: '<strong>Mô tả:</strong> Hai tay xoa lên cánh tay như đang tắm.' },
-      { label: 'Đánh răng', videoFile: 'danhrang.mp4',  glbFile: 'danhrang.glb',  desc: '<strong>Mô tả:</strong> Ngón trỏ mô phỏng bàn chải đánh răng.' },
-      { label: 'Rửa tay',   videoFile: 'rua_tay.mp4',   glbFile: 'rua_tay.glb',   desc: '<strong>Mô tả:</strong> Hai tay xoa vào nhau.' },
-      { label: 'Chải tóc',  videoFile: 'chai_toc.mp4',  glbFile: 'chai_toc.glb',  desc: '<strong>Mô tả:</strong> Tay chải nhẹ qua tóc.' },
-      { label: 'Mặc áo',    videoFile: 'mac_ao.mp4',    glbFile: 'mac_ao.glb',    desc: '<strong>Mô tả:</strong> Hai tay mô phỏng kéo áo lên.' },
-      { label: 'Ngủ dậy',   videoFile: 'ngu_day.mp4',   glbFile: 'ngu_day.glb',   desc: '<strong>Mô tả:</strong> Hai tay mở ra từ vị trí ngủ.' },
-      { label: 'Ăn sáng',   videoFile: 'an_sang.mp4',   glbFile: 'an_sang.glb',   desc: '<strong>Mô tả:</strong> Kết hợp ký hiệu ăn + buổi sáng.' },
-      { label: 'Đi ngủ',    videoFile: 'di_ngu.mp4',    glbFile: 'di_ngu.glb',    desc: '<strong>Mô tả:</strong> Kết hợp ký hiệu đi + ngủ.' },
-      { label: 'Vệ sinh',   videoFile: 'divesinh.mp4',  glbFile: 'divesinh.glb',  desc: '<strong>Mô tả:</strong> Chữ V di chuyển từ trên xuống dưới.' },
+      { label: 'Chải đầu',    videoFile: 'chaidau.mp4',   glbFile: 'chaidau.glb',   desc: '<strong>Mô tả:</strong> Tay chải nhẹ qua tóc từ trên xuống.' },
+      { label: 'Đánh răng',   videoFile: 'danhrang.mp4',  glbFile: 'danhrang.glb',  desc: '<strong>Mô tả:</strong> Ngón trỏ mô phỏng bàn chải đánh răng.' },
+      { label: 'Đi vệ sinh',  videoFile: 'divesinh.mp4',  glbFile: 'divesinh.glb',  desc: '<strong>Mô tả:</strong> Chữ V di chuyển từ trên xuống dưới.' },
+      { label: 'Gội đầu',     videoFile: 'goidau.mp4',    glbFile: 'goidau.glb',    desc: '<strong>Mô tả:</strong> Hai tay gội đầu từ trước ra sau.' },
+      { label: 'Mặc quần áo', videoFile: 'macquanao.mp4', glbFile: 'macquanao.glb', desc: '<strong>Mô tả:</strong> Hai tay mô phỏng mặc quần áo vào người.' },
+      { label: 'Rửa chân',    videoFile: 'ruachan.mp4',   glbFile: 'ruachan.glb',   desc: '<strong>Mô tả:</strong> Tay xoa vào chân như đang rửa.' },
+      { label: 'Rửa mặt',     videoFile: 'ruamat.mp4',    glbFile: 'ruamat.glb',    desc: '<strong>Mô tả:</strong> Hai tay xoa lên mặt như rửa mặt.' },
+      { label: 'Rửa tay',     videoFile: 'ruatay.mp4',    glbFile: 'ruatay.glb',    desc: '<strong>Mô tả:</strong> Hai tay xoa vào nhau.' },
     ],
   },
   {
     id: 'trang-phuc',
-    label: 'Trang phục & Đồ dùng',
+    label: 'Trang phục & Phụ kiện',
     icon: '👗', iconBg: '#fce8ed', level: 'Trung cấp',
-    desc: 'Học ký hiệu về các loại quần áo và đồ dùng cá nhân.',
+    desc: 'Học ký hiệu về các loại quần áo và phụ kiện cá nhân.',
     words: [
-      { label: 'Áo',      videoFile: 'ao.mp4',       glbFile: 'ao.glb',       desc: '<strong>Mô tả:</strong> Chạm hai tay vào hai vai áo.' },
-      { label: 'Quần',    videoFile: 'quan.mp4',      glbFile: 'quan.glb',     desc: '<strong>Mô tả:</strong> Hai tay vỗ vào đùi.' },
-      { label: 'Giày',    videoFile: 'giay.mp4',      glbFile: 'giay.glb',     desc: '<strong>Mô tả:</strong> Nắm đấm nhẹ hai tay vào nhau.' },
-      { label: 'Mũ',      videoFile: 'mu.mp4',        glbFile: 'mu.glb',       desc: '<strong>Mô tả:</strong> Tay áp lên đỉnh đầu mô phỏng đội mũ.' },
-      { label: 'Kính',    videoFile: 'kinh.mp4',      glbFile: 'kinh.glb',     desc: '<strong>Mô tả:</strong> Hai ngón trỏ và cái tạo vòng tròn quanh mắt.' },
-      { label: 'Túi',     videoFile: 'tui.mp4',       glbFile: 'tui.glb',      desc: '<strong>Mô tả:</strong> Tay nắm như cầm quai túi, đung đưa.' },
-      { label: 'Khăn',    videoFile: 'khan.mp4',      glbFile: 'khan.glb',     desc: '<strong>Mô tả:</strong> Hai tay giả vờ quàng khăn quanh cổ.' },
-      { label: 'Vớ',      videoFile: 'vo.mp4',        glbFile: 'vo.glb',       desc: '<strong>Mô tả:</strong> Chỉ tay xuống và vẽ vòng quanh cổ chân.' },
-      { label: 'Đồng hồ', videoFile: 'dong_ho.mp4',   glbFile: 'dong_ho.glb',  desc: '<strong>Mô tả:</strong> Chỉ vào cổ tay như đeo đồng hồ.' },
+      { label: 'Bít tất',      videoFile: 'bittat.mp4',     glbFile: 'bittat.glb',     desc: '<strong>Mô tả:</strong> Tay chỉ vào chân và vẽ vòng quanh cổ chân.' },
+      { label: 'Cặp tóc',      videoFile: 'captoc.mp4',     glbFile: 'captoc.glb',     desc: '<strong>Mô tả:</strong> Hai ngón kẹp vào tóc.' },
+      { label: 'Đôi dép',      videoFile: 'doidep.mp4',     glbFile: 'doidep.glb',     desc: '<strong>Mô tả:</strong> Tay vỗ nhẹ vào mu bàn chân.' },
+      { label: 'Găng tay',     videoFile: 'gangtay.mp4',    glbFile: 'gangtay.glb',    desc: '<strong>Mô tả:</strong> Tay mô phỏng kéo găng tay lên.' },
+      { label: 'Khăn mặt',     videoFile: 'khanmat.mp4',    glbFile: 'khanmat.glb',    desc: '<strong>Mô tả:</strong> Hai tay mô phỏng lau mặt bằng khăn.' },
+      { label: 'Kính',         videoFile: 'kinh.mp4',       glbFile: 'kinh.glb',       desc: '<strong>Mô tả:</strong> Hai ngón trỏ và cái tạo vòng tròn quanh mắt.' },
+      { label: 'Lược',         videoFile: 'luoc.mp4',       glbFile: 'luoc.glb',       desc: '<strong>Mô tả:</strong> Tay chải tóc bằng ngón tay như dùng lược.' },
+      { label: 'Mũ lưỡi trai', videoFile: 'muluoitrai.mp4', glbFile: 'muluoitrai.glb', desc: '<strong>Mô tả:</strong> Tay mô phỏng đội mũ lưỡi trai lên đầu.' },
+      { label: 'Nón',          videoFile: 'non.mp4',        glbFile: 'non.glb',        desc: '<strong>Mô tả:</strong> Tay tạo hình nón lá trên đầu.' },
     ],
   },
   {
-    id: 'ngoai-hinh',
-    label: 'Ngoại hình & Sức khỏe',
+    id: 'suc-khoe',
+    label: 'Sức khỏe & Cảm xúc',
     icon: '💪', iconBg: '#e3f0f8', level: 'Trung cấp',
-    desc: 'Mô tả ngoại hình và tình trạng sức khỏe bằng ngôn ngữ ký hiệu.',
+    desc: 'Ký hiệu về tình trạng sức khỏe và cảm xúc.',
     words: [
-      { label: 'Cao',  videoFile: 'cao.mp4',   glbFile: 'cao.glb',   desc: '<strong>Mô tả:</strong> Tay giơ thẳng lên cao.' },
-      { label: 'Thấp', videoFile: 'thap.mp4',  glbFile: 'thap.glb',  desc: '<strong>Mô tả:</strong> Tay hạ thấp xuống ngang eo.' },
-      { label: 'Béo',  videoFile: 'beo.mp4',   glbFile: 'beo.glb',   desc: '<strong>Mô tả:</strong> Hai tay phồng ra hai bên.' },
-      { label: 'Gầy',  videoFile: 'gay.mp4',   glbFile: 'gay.glb',   desc: '<strong>Mô tả:</strong> Hai tay dẹp sát vào nhau.' },
-      { label: 'Đẹp',  videoFile: 'dep.mp4',   glbFile: 'dep.glb',   desc: '<strong>Mô tả:</strong> Tay vẽ vòng trước mặt từ trên xuống.' },
-      { label: 'Khỏe', videoFile: 'khoe.mp4',  glbFile: 'khoe.glb',  desc: '<strong>Mô tả:</strong> Tay nắm đấm gõ nhẹ lên ngực.' },
-      { label: 'Bệnh', videoFile: 'benh.mp4',  glbFile: 'benh.glb',  desc: '<strong>Mô tả:</strong> Ngón giữa chạm trán, ngón giữa kia chạm bụng.' },
-      { label: 'Đau',  videoFile: 'dau.mp4',   glbFile: 'dau.glb',   desc: '<strong>Mô tả:</strong> Hai ngón trỏ trỏ vào nhau và xoắn.' },
+      { label: 'Béo',       videoFile: 'beo.mp4',      glbFile: 'beo.glb',      desc: '<strong>Mô tả:</strong> Hai tay phồng ra hai bên.' },
+      { label: 'Cao',       videoFile: 'cao.mp4',      glbFile: 'cao.glb',      desc: '<strong>Mô tả:</strong> Tay giơ thẳng lên cao.' },
+      { label: 'Cười',      videoFile: 'cuoi.mp4',     glbFile: 'cuoi.glb',     desc: '<strong>Mô tả:</strong> Hai ngón cái kéo góc miệng lên.' },
+      { label: 'Gầy',       videoFile: 'gay.mp4',      glbFile: 'gay.glb',      desc: '<strong>Mô tả:</strong> Hai tay dẹp sát vào nhau.' },
+      { label: 'Khóc',      videoFile: 'khoc.mp4',     glbFile: 'khoc.glb',     desc: '<strong>Mô tả:</strong> Ngón trỏ vẽ đường nước mắt xuống má.' },
+      { label: 'Khỏe mạnh', videoFile: 'khoemanh.mp4', glbFile: 'khoemanh.glb', desc: '<strong>Mô tả:</strong> Hai tay nắm đấm chạm vào ngực.' },
+      { label: 'Mệt mỏi',   videoFile: 'metmoi.mp4',   glbFile: 'metmoi.glb',   desc: '<strong>Mô tả:</strong> Vai xuôi, hai tay buông thõng.' },
+      { label: 'Niềm vui',  videoFile: 'niemvui.mp4',  glbFile: 'niemvui.glb',  desc: '<strong>Mô tả:</strong> Hai tay di chuyển lên xuống trước ngực.' },
+      { label: 'Sức khỏe',  videoFile: 'suckhoe.mp4',  glbFile: 'suckhoe.glb',  desc: '<strong>Mô tả:</strong> Tay nắm đấm gõ nhẹ lên ngực.' },
     ],
   },
   {
     id: 'gia-dinh',
     label: 'Gia đình & Xưng hô',
     icon: '👨‍👩‍👧', iconBg: '#fff0e3', level: 'Cơ bản',
-    desc: 'Ký hiệu về các thành viên và các đại từ xưng hô trong gia đình.',
+    desc: 'Ký hiệu về các thành viên gia đình và cách xưng hô.',
     words: [
-      { label: 'Bố',  videoFile: 'bo.mp4',   glbFile: 'bo.glb',   desc: '<strong>Mô tả:</strong> Đặt ngón cái lên trán.' },
-      { label: 'Mẹ',  videoFile: 'me.mp4',   glbFile: 'me.glb',   desc: '<strong>Mô tả:</strong> Đặt ngón cái lên cằm.' },
-      { label: 'Anh', videoFile: 'anh.mp4',  glbFile: 'anh.glb',  desc: '<strong>Mô tả:</strong> Ngón trỏ chỉ về phía trước rồi nâng lên.' },
-      { label: 'Em',  videoFile: 'em.mp4',   glbFile: 'em.glb',   desc: '<strong>Mô tả:</strong> Ngón trỏ chỉ về phía trước rồi hạ xuống.' },
-      { label: 'Tôi', videoFile: 'toi.mp4',  glbFile: 'toi.glb',  desc: '<strong>Mô tả:</strong> Ngón trỏ chỉ vào giữa ngực.' },
+      { label: 'Bạn',     videoFile: 'ban.mp4',    glbFile: 'ban.glb',    desc: '<strong>Mô tả:</strong> Ngón trỏ chỉ về phía người đối diện.' },
+      { label: 'Bé gái',  videoFile: 'begai.mp4',  glbFile: 'begai.glb',  desc: '<strong>Mô tả:</strong> Tay mô phỏng bé nhỏ + ký hiệu gái.' },
+      { label: 'Bé trai', videoFile: 'betrai.mp4', glbFile: 'betrai.glb', desc: '<strong>Mô tả:</strong> Tay mô phỏng bé nhỏ + ký hiệu trai.' },
+      { label: 'Bố',      videoFile: 'bo.mp4',     glbFile: 'bo.glb',     desc: '<strong>Mô tả:</strong> Đặt ngón cái lên trán.' },
+      { label: 'Em trai', videoFile: 'emtrai.mp4', glbFile: 'emtrai.glb', desc: '<strong>Mô tả:</strong> Ngón trỏ chỉ về phía trước rồi hạ xuống.' },
     ],
   },
   {
     id: 'giao-tiep',
-    label: 'Giao tiếp & Cảm xúc',
+    label: 'Giao tiếp & Từ vựng',
     icon: '💬', iconBg: '#e8f4e3', level: 'Cơ bản',
-    desc: 'Ký hiệu chào hỏi, cảm xúc và giao tiếp thông dụng hàng ngày.',
+    desc: 'Ký hiệu chào hỏi và từ vựng giao tiếp thông dụng.',
     words: [
-      { label: 'Xin chào',        videoFile: 'chao.mp4',       glbFile: 'chao.glb',       desc: '<strong>Mô tả:</strong> Giơ tay lên vẫy nhẹ sang ngang.' },
-      { label: 'Cảm ơn',          videoFile: 'cam_on.mp4',     glbFile: 'cam_on.glb',     desc: '<strong>Mô tả:</strong> Chạm đầu ngón tay vào cằm rồi đưa ra trước.' },
-      { label: 'Xin lỗi',         videoFile: 'xin_loi.mp4',   glbFile: 'xin_loi.glb',   desc: '<strong>Mô tả:</strong> Nắm tay xoay tròn trước ngực.' },
-      { label: 'Vui',             videoFile: 'vui.mp4',        glbFile: 'vui.glb',        desc: '<strong>Mô tả:</strong> Hai tay di chuyển lên xuống trước ngực.' },
-      { label: 'Buồn',            videoFile: 'buon.mp4',       glbFile: 'buon.glb',       desc: '<strong>Mô tả:</strong> Hai tay di chuyển xuống trước mặt.' },
-      { label: 'Tức giận',        videoFile: 'tuc_gian.mp4',  glbFile: 'tuc_gian.glb',  desc: '<strong>Mô tả:</strong> Hai tay cào trước mặt, mặt căng thẳng.' },
-      { label: 'Bạn khỏe không?', videoFile: 'ban_khoe.mp4',  glbFile: 'ban_khoe.glb',  desc: '<strong>Mô tả:</strong> Kết hợp ký hiệu bạn + khỏe + dấu hỏi.' },
+      { label: 'Bao nhiêu', videoFile: 'baonhieu.mp4', glbFile: 'baonhieu.glb', desc: '<strong>Mô tả:</strong> Hai tay mở rộng, lòng bàn tay ngửa lên.' },
+      { label: 'Chào',      videoFile: 'chao.mp4',     glbFile: 'chao.glb',     desc: '<strong>Mô tả:</strong> Giơ tay lên vẫy nhẹ sang ngang.' },
+      { label: 'Sách',      videoFile: 'sach.mp4',     glbFile: 'sach.glb',     desc: '<strong>Mô tả:</strong> Hai tay mô phỏng mở sách ra.' },
     ],
   },
 ];
@@ -185,8 +175,56 @@ let currentViewTab  = 'video'; // 'video' | 'glb'
 function renderSidebar() {
   const topicNav = document.getElementById('topicNav');
   if (!topicNav) return;
-  topicNav.innerHTML = '';
 
+  /* ── Search bar ── */
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar && !document.getElementById('sidebarSearch')) {
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'sidebar-search-wrap';
+    searchWrap.innerHTML = `
+      <div class="sidebar-search-box">
+        <svg class="sidebar-search-icon" width="15" height="15" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input id="sidebarSearch" type="text" placeholder="Tìm từ vựng…"
+               autocomplete="off" spellcheck="false" />
+        <button id="sidebarSearchClear" class="sidebar-search-clear" style="display:none">✕</button>
+      </div>
+      <div id="searchResults" class="search-results" style="display:none"></div>`;
+    sidebar.insertBefore(searchWrap, sidebar.querySelector('.section-label'));
+
+    const input  = document.getElementById('sidebarSearch');
+    const clear  = document.getElementById('sidebarSearchClear');
+    const results= document.getElementById('searchResults');
+
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      clear.style.display = q ? '' : 'none';
+      if (!q) {
+        results.style.display = 'none';
+        topicNav.style.display = '';
+        document.querySelector('.sidebar .section-label').style.display = '';
+        return;
+      }
+      topicNav.style.display = 'none';
+      document.querySelector('.sidebar .section-label').style.display = 'none';
+      renderSearchResults(q, results);
+      results.style.display = '';
+    });
+
+    clear.addEventListener('click', () => {
+      input.value = '';
+      clear.style.display = 'none';
+      results.style.display = 'none';
+      topicNav.style.display = '';
+      document.querySelector('.sidebar .section-label').style.display = '';
+      input.focus();
+    });
+  }
+
+  /* ── Topic list ── */
+  topicNav.innerHTML = '';
   TOPICS.forEach((t, i) => {
     const item = document.createElement('div');
     item.className   = `topic-nav-item${i === 0 ? ' active' : ''}`;
@@ -198,9 +236,51 @@ function renderSidebar() {
         <div class="topic-nav-name">${t.label}</div>
         <div class="topic-nav-count">${t.words.length} bài học</div>
       </div>`;
-    item.onclick  = () => selectTopic(i);
+    item.onclick   = () => selectTopic(i);
     item.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') selectTopic(i); };
     topicNav.appendChild(item);
+  });
+}
+
+/* ── Search across all topics ─────────────────────────────────────────────── */
+function renderSearchResults(q, container) {
+  const hits = [];
+  TOPICS.forEach((t, tIdx) => {
+    t.words.forEach((w, wIdx) => {
+      if (w.label.toLowerCase().includes(q)) hits.push({ t, tIdx, w, wIdx });
+    });
+  });
+
+  if (!hits.length) {
+    container.innerHTML = `<div class="search-empty">Không tìm thấy từ "<strong>${q}</strong>"</div>`;
+    return;
+  }
+
+  container.innerHTML = hits.map(({ t, tIdx, w, wIdx }) => `
+    <div class="search-result-item" data-tidx="${tIdx}" data-widx="${wIdx}">
+      <div class="search-result-icon" style="background:${t.iconBg}">${t.icon}</div>
+      <div class="search-result-body">
+        <div class="search-result-word">${w.label}</div>
+        <div class="search-result-topic">${t.label}</div>
+      </div>
+    </div>`).join('');
+
+  container.querySelectorAll('.search-result-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const tIdx = +el.dataset.tidx;
+      const wIdx = +el.dataset.widx;
+      /* clear search */
+      const input = document.getElementById('sidebarSearch');
+      const clear = document.getElementById('sidebarSearchClear');
+      input.value = '';
+      clear.style.display = 'none';
+      container.style.display = 'none';
+      document.getElementById('topicNav').style.display = '';
+      document.querySelector('.sidebar .section-label').style.display = '';
+      /* navigate */
+      selectTopic(tIdx);
+      selectLesson(tIdx, wIdx);
+    });
   });
 }
 
@@ -246,7 +326,7 @@ function renderFeaturedCard() {
         </div>
         <div class="feat-btn-row">
           <button class="feat-btn feat-btn-primary" id="featContinueBtn">Tiếp tục học ▶</button>
-          <button class="feat-btn feat-btn-secondary" id="featPracticeBtn">🎯 Luyện tập</button>
+          <button class="feat-btn feat-btn-secondary" id="featPracticeBtn">🔤 Luyện ghép chữ cái</button>
         </div>
       </div>
     </div>
@@ -553,6 +633,7 @@ function wireVideoControls() {
 let renderer, scene, camera, orbitCtrl, mixer, clock, animFrameId;
 let autoRotate  = true;
 let animPlaying = true;
+let glbLoadId   = 0; // incremented each load; stale callbacks check against this
 
 function initThree() {
   const canvas = document.getElementById('threeCanvas');
@@ -611,12 +692,17 @@ function startRenderLoop() {
 
 function clearGlbScene() {
   if (!scene) return;
-  scene.children
-    .filter(c => c.userData.isSign)
-    .forEach(c => {
-      scene.remove(c);
-      c.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+  const toRemove = scene.children.filter(c => c.userData.isSign);
+  toRemove.forEach(c => {
+    scene.remove(c);
+    c.traverse(o => {
+      if (o.isMesh) {
+        o.geometry.dispose();
+        if (Array.isArray(o.material)) o.material.forEach(m => m.dispose());
+        else if (o.material) o.material.dispose();
+      }
     });
+  });
   if (mixer) { mixer.stopAllAction(); mixer = null; }
 }
 
@@ -625,9 +711,13 @@ function loadGlb(glbFile) {
   const noGlb = document.getElementById('noGlb');
   noGlb?.classList.remove('show');
 
+  const myLoadId = ++glbLoadId; // capture current ID; stale callbacks will bail
+
   new GLTFLoader().load(
     GLB_DIR + glbFile,
     (gltf) => {
+      if (myLoadId !== glbLoadId) return; // stale — a newer load already started
+
       const model = gltf.scene;
       model.userData.isSign = true;
       scene.add(model);
@@ -646,6 +736,7 @@ function loadGlb(glbFile) {
     },
     undefined,
     () => {
+      if (myLoadId !== glbLoadId) return;
       const p = document.getElementById('noGlbPath');
       if (p) p.textContent = `glbs/${glbFile}`;
       noGlb?.classList.add('show');
@@ -900,6 +991,9 @@ function renderPracticeView() {
       <div class="practice-header-left">
         <h2>Luyện tập: "${word}"</h2>
         <p>Thực hiện từng chữ cái theo thứ tự</p>
+        <p style="font-size:.7rem;color:rgba(255,255,255,.5);margin-top:2px;">
+          ⚠️ Luyện tập ghép chữ cái — khác với video từ hoàn chỉnh trong phần học
+        </p>
         <div class="char-progress" id="charProgress">${charChipsHtml}</div>
       </div>
       <button class="practice-exit-btn" id="practiceExitBtn">✕ Thoát</button>
@@ -1022,19 +1116,40 @@ function advanceChar() {
   loadCharVideo(next);
 }
 
+/* ── Get next supported word in topic ────────────────────────────────────── */
+function getNextSupportedWord(tIdx, currentWord) {
+  const words = TOPICS[tIdx].words;
+  const currentIdx = words.findIndex(w => w.label === currentWord);
+  for (let i = currentIdx + 1; i < words.length; i++) {
+    if (isWordSupported(words[i].label)) return words[i].label;
+  }
+  // Wrap around from beginning
+  for (let i = 0; i < currentIdx; i++) {
+    if (isWordSupported(words[i].label)) return words[i].label;
+  }
+  return null;
+}
+
 /* ── Word complete banner ─────────────────────────────────────────────────── */
 function showWordSuccess() {
   const { word } = practiceState;
   const vidWrap  = document.querySelector('.practice-vid-wrap');
 
   if (vidWrap) {
+    const nextWord = getNextSupportedWord(practiceState.topicIdx, word);
     const banner = document.createElement('div');
     banner.className = 'practice-success';
     banner.innerHTML = `
       <div class="big-check">🎉</div>
       <div>Hoàn thành từ "<strong>${word}</strong>"!</div>
-      <button class="practice-manual-btn" id="practiceReplayBtn"
-              style="margin-top:8px;">🔄 Luyện lại</button>`;
+      <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;justify-content:center;">
+        <button class="practice-manual-btn" id="practiceReplayBtn">🔄 Thử lại</button>
+        <button class="practice-manual-btn" id="practiceNextWordBtn"
+          style="background:linear-gradient(135deg,#16a34a,#15803d);box-shadow:0 2px 10px rgba(22,163,74,.35);"
+          ${!nextWord ? 'disabled' : ''}>
+          ⏭ Từ tiếp theo${nextWord ? `: "${nextWord}"` : ' (hết từ)'}
+        </button>
+      </div>`;
     vidWrap.appendChild(banner);
 
     banner.querySelector('#practiceReplayBtn').onclick = () => {
@@ -1045,6 +1160,12 @@ function showWordSuccess() {
       const nextBtn = document.getElementById('practiceNextBtn');
       if (nextBtn) { nextBtn.disabled = false; nextBtn.style.opacity = '1'; }
     };
+
+    if (nextWord) {
+      banner.querySelector('#practiceNextWordBtn').onclick = () => {
+        startPracticeSession(practiceState.topicIdx, nextWord);
+      };
+    }
   }
 
   const nextBtn = document.getElementById('practiceNextBtn');
@@ -1374,6 +1495,27 @@ function exitPracticeSession() {
   const featCard = document.querySelector('.featured-card');
   if (featCard) featCard.style.display = '';
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CAMERA CLEANUP ON NAVIGATION
+   Dừng camera khi: (1) parent gửi message 'stopLearnCamera',
+                    (2) iframe bị ẩn (visibilitychange),
+                    (3) trang unload.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function safeStopCamera() {
+  if (practiceState.active) exitPracticeSession();
+  else stopCamera();
+}
+
+window.addEventListener('message', (e) => {
+  if (e.data?.action === 'stopLearnCamera') safeStopCamera();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') safeStopCamera();
+});
+
+window.addEventListener('pagehide', safeStopCamera);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    BOOT
