@@ -1,27 +1,36 @@
+import sqlite3
 import json
-import os
 import uuid
 from datetime import datetime
 from typing import Optional
 
-HISTORY_DIR = "chat_histories"
+DB_PATH = "chat.db"
 
 
+# ─── Internal ────────────────────────────────────────────────────────────────
 
-def _ensure_dir():
-    os.makedirs(HISTORY_DIR, exist_ok=True)
+def _conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-def _session_path(session_id: str) -> str:
-    return os.path.join(HISTORY_DIR, f"{session_id}.json")
+def _ensure_table():
+    with _conn() as c:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                session_id  TEXT PRIMARY KEY,
+                title       TEXT    DEFAULT '(chưa có tin nhắn)',
+                turn_count  INTEGER DEFAULT 0,
+                messages    TEXT    DEFAULT '[]',
+                created_at  TEXT,
+                updated_at  TEXT
+            )
+        """)
 
 
-def _now_iso() -> str:
+def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
-
-
-def _new_session_id() -> str:
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
 def _short_title(text: str, max_len: int = 50) -> str:
@@ -32,52 +41,66 @@ def _short_title(text: str, max_len: int = 50) -> str:
 # ─── Core API ────────────────────────────────────────────────────────────────
 
 def create_session() -> dict:
-    """Tạo một phiên mới, trả về session dict rỗng."""
-    _ensure_dir()
-    session_id = _new_session_id()
-    now = _now_iso()
+    """Tạo phiên mới, lưu vào SQLite, trả về session dict."""
+    _ensure_table()
+    now = _now()
     session = {
-        "session_id": session_id,
+        "session_id": str(uuid.uuid4()),
+        "title":      "(chưa có tin nhắn)",
+        "turn_count": 0,
+        "messages":   [],
         "created_at": now,
         "updated_at": now,
-        "title": "(chưa có tin nhắn)",
-        "turn_count": 0,
-        "messages": [],
     }
-    _save_session(session)
+    with _conn() as c:
+        c.execute("""
+            INSERT INTO sessions (session_id, title, turn_count, messages, created_at, updated_at)
+            VALUES (:session_id, :title, :turn_count, :messages, :created_at, :updated_at)
+        """, {**session, "messages": json.dumps([], ensure_ascii=False)})
     return session
 
 
 def load_session(session_id: str) -> Optional[dict]:
-    """Load phiên từ file JSON. Trả về None nếu không tìm thấy."""
-    path = _session_path(session_id)
-    if not os.path.exists(path):
+    """Load phiên từ DB. Trả về None nếu không tìm thấy."""
+    _ensure_table()
+    with _conn() as c:
+        row = c.execute(
+            "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
+        ).fetchone()
+    if not row:
         return None
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return _row_to_dict(row)
 
 
 def _save_session(session: dict):
-    """Ghi session xuống file JSON."""
-    _ensure_dir()
-    path = _session_path(session["session_id"])
-    session["updated_at"] = _now_iso()
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(session, f, ensure_ascii=False, indent=2)
+    """Cập nhật session trong DB."""
+    session["updated_at"] = _now()
+    with _conn() as c:
+        c.execute("""
+            UPDATE sessions
+            SET title = :title, turn_count = :turn_count,
+                messages = :messages, updated_at = :updated_at
+            WHERE session_id = :session_id
+        """, {
+            **session,
+            "messages": json.dumps(session["messages"], ensure_ascii=False)
+        })
+
+
+def _row_to_dict(row: sqlite3.Row) -> dict:
+    d = dict(row)
+    d["messages"] = json.loads(d["messages"])
+    return d
 
 
 def append_messages(session: dict, user_query: str, bot_response: str) -> dict:
-    """
-    Thêm một cặp (user, assistant) vào session và lưu xuống file.
-    Trả về session đã cập nhật.
-    """
-    now = _now_iso()
-
-    session["messages"].append({"role": "user",      "content": user_query,    "timestamp": now})
-    session["messages"].append({"role": "assistant",  "content": bot_response,  "timestamp": now})
+    """Thêm cặp (user, assistant) vào session và lưu DB."""
+    now = _now()
+    session["messages"].append({"role": "user",      "content": user_query,   "timestamp": now})
+    session["messages"].append({"role": "assistant",  "content": bot_response, "timestamp": now})
     session["turn_count"] = len(session["messages"]) // 2
 
-    # Dùng câu hỏi đầu tiên làm tiêu đề phiên
+    # Dùng câu hỏi đầu tiên làm tiêu đề
     if session["turn_count"] == 1:
         session["title"] = _short_title(user_query)
 
@@ -85,102 +108,34 @@ def append_messages(session: dict, user_query: str, bot_response: str) -> dict:
     return session
 
 
-def get_history_list(messages: list) -> list:
+def get_history_list(messages: list, max_turns: int = 3) -> list:
     """
-    Chuyển messages (có timestamp) → list thuần
-    {"role", "content"} để truyền vào AgentState.
+    Trả về list {"role", "content"} của N lượt gần nhất để truyền vào model.
+    max_turns=3 → tối đa 6 messages (3 user + 3 assistant).
     """
-    return [{"role": m["role"], "content": m["content"]} for m in messages]
+    recent = messages[-(max_turns * 2):]
+    return [{"role": m["role"], "content": m["content"]} for m in recent]
 
 
-# ─── Session listing & selection UI ─────────────────────────────────────────
+# ─── Session listing ──────────────────────────────────────────────────────────
 
 def list_sessions() -> list[dict]:
-    """
-    Trả về danh sách tất cả phiên, sắp xếp mới nhất lên đầu.
-    Mỗi phần tử: {"session_id", "title", "turn_count", "updated_at"}
-    """
-    _ensure_dir()
-    sessions = []
-    for fname in os.listdir(HISTORY_DIR):
-        if not fname.endswith(".json"):
-            continue
-        path = os.path.join(HISTORY_DIR, fname)
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            sessions.append({
-                "session_id": data["session_id"],
-                "title":      data.get("title", "(không có tiêu đề)"),
-                "turn_count": data.get("turn_count", 0),
-                "updated_at": data.get("updated_at", ""),
-            })
-        except Exception:
-            continue  # Bỏ qua file lỗi
-
-    sessions.sort(key=lambda s: s["updated_at"], reverse=True)
-    return sessions
-
-
-def print_session_list(sessions: list[dict]):
-    """In danh sách phiên ra terminal."""
-    if not sessions:
-        print("  (Chưa có phiên nào được lưu)")
-        return
-    print(f"\n  {'#':<4} {'Thời gian cập nhật':<22} {'Lượt':<6} Tiêu đề")
-    print("  " + "-" * 70)
-    for i, s in enumerate(sessions, 1):
-        dt = s["updated_at"].replace("T", " ")
-        print(f"  [{i}]  {dt:<22} {s['turn_count']:<6} {s['title']}")
-    print()
-
-
-def select_or_create_session() -> dict:
-    """
-    Hiển thị menu chọn phiên ngay khi khởi động.
-    Trả về session dict (mới hoặc đã load).
-    """
-    sessions = list_sessions()
-
-    print("\n" + "=" * 60)
-    print("  LỊCH SỬ HỘI THOẠI")
-    print("=" * 60)
-
-    if not sessions:
-        print("  Chưa có phiên nào. Tạo phiên mới...")
-        session = create_session()
-        print(f"  ✓ Phiên mới: {session['session_id']}\n")
-        return session
-
-    print_session_list(sessions)
-    print("  [0] Tạo phiên mới")
-    print("  [1–{}] Load phiên cũ".format(len(sessions)))
-
-    while True:
-        choice = input("  Chọn: ").strip()
-
-        if choice == "0" or choice == "":
-            session = create_session()
-            print(f"  ✓ Phiên mới: {session['session_id']}\n")
-            return session
-
-        if choice.isdigit():
-            idx = int(choice)
-            if 1 <= idx <= len(sessions):
-                sid = sessions[idx - 1]["session_id"]
-                session = load_session(sid)
-                if session:
-                    turn = session["turn_count"]
-                    print(f"  ✓ Đã load phiên '{session['title']}' ({turn} lượt trước)\n")
-                    return session
-
-        print("  Lựa chọn không hợp lệ, nhập lại.")
+    """Danh sách tất cả phiên, mới nhất lên đầu."""
+    _ensure_table()
+    with _conn() as c:
+        rows = c.execute("""
+            SELECT session_id, title, turn_count, updated_at
+            FROM sessions
+            ORDER BY updated_at DESC
+        """).fetchall()
+    return [dict(r) for r in rows]
 
 
 def delete_session(session_id: str) -> bool:
-    """Xoá file JSON của phiên. Trả về True nếu thành công."""
-    path = _session_path(session_id)
-    if os.path.exists(path):
-        os.remove(path)
-        return True
-    return False
+    """Xoá phiên khỏi DB. Trả về True nếu thành công."""
+    _ensure_table()
+    with _conn() as c:
+        affected = c.execute(
+            "DELETE FROM sessions WHERE session_id = ?", (session_id,)
+        ).rowcount
+    return affected > 0
