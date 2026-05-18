@@ -5,8 +5,8 @@ import os
 from datetime import datetime
 from typing import Optional
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DB_PATH = os.path.join(REPO_ROOT, "data", "chat.db")
+BACKEND_ROOT = os.path.abspath(os.path.dirname(__file__))
+DB_PATH = os.path.join(BACKEND_ROOT, "data", "chat.db")
 
 
 # ─── Internal ────────────────────────────────────────────────────────────────

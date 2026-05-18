@@ -266,7 +266,9 @@ function confirmDelete(sessionId, title) {
 
 async function deleteSession(sessionId) {
   try {
-    const res = await fetch(`${API}/history/${sessionId}`, { method: "DELETE" });
+    const res = await fetch(`${API}/history/${sessionId}`, {
+      method: "DELETE",
+    });
     if (!res.ok) throw new Error();
     if (currentSessionId === sessionId) {
       currentSessionId = null;
@@ -303,7 +305,7 @@ async function loadSession(sessionId) {
 function showWelcome() {
   messagesEl.innerHTML = `
     <div class="welcome" id="welcome">
-      <h2>Sign Language Chatbot</h2>
+      <h2>VNSignMate Assistant</h2>
       <p>Nhập tin nhắn để bắt đầu</p>
     </div>`;
 }

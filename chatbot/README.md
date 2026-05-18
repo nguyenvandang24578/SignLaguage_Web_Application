@@ -5,6 +5,13 @@ cd chatbot/backend
 python server.py
 ```
 
+## Run both llama-server + backend
+
+```bash
+cd chatbot
+bash run_servers.sh
+```
+
 ---
 
 **_Notie: Create `.env` before running server.py and run llama_server_**
