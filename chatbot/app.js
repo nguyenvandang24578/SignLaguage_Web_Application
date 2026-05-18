@@ -224,14 +224,59 @@ function renderSessionList(sessions) {
   }
   sessionList.innerHTML = "";
   sessions.forEach((s) => {
+    const item = document.createElement("div");
+    item.className =
+      "sess-item" + (s.session_id === currentSessionId ? " active" : "");
+
     const btn = document.createElement("button");
-    btn.className =
-      "sess-btn" + (s.session_id === currentSessionId ? " active" : "");
+    btn.className = "sess-btn";
     btn.textContent = s.title || s.session_id;
     btn.title = `${s.turn_count} lượt · ${s.updated_at}`;
     btn.addEventListener("click", () => loadSession(s.session_id));
-    sessionList.appendChild(btn);
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "sess-del-btn";
+    delBtn.title = "Xoá cuộc trò chuyện này";
+    delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      confirmDelete(s.session_id, s.title || s.session_id);
+    });
+
+    item.appendChild(btn);
+    item.appendChild(delBtn);
+    sessionList.appendChild(item);
   });
+}
+
+function confirmDelete(sessionId, title) {
+  const modal = document.getElementById("confirm-modal");
+  document.getElementById("confirm-modal-title").textContent =
+    `Xoá "${title.length > 30 ? title.slice(0, 30) + "…" : title}"?`;
+  modal.classList.add("open");
+
+  document.getElementById("btn-confirm-yes").onclick = async () => {
+    modal.classList.remove("open");
+    await deleteSession(sessionId);
+  };
+  document.getElementById("btn-confirm-no").onclick = () => {
+    modal.classList.remove("open");
+  };
+}
+
+async function deleteSession(sessionId) {
+  try {
+    const res = await fetch(`${API}/history/${sessionId}`, { method: "DELETE" });
+    if (!res.ok) throw new Error();
+    if (currentSessionId === sessionId) {
+      currentSessionId = null;
+      showWelcome();
+    }
+    showToast("Đã xoá cuộc trò chuyện.");
+    await loadSessionList();
+  } catch (_) {
+    showToast("Không thể xoá. Kiểm tra server.");
+  }
 }
 
 async function loadSession(sessionId) {

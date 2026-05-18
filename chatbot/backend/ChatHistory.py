@@ -1,10 +1,12 @@
 import sqlite3
 import json
 import uuid
+import os
 from datetime import datetime
 from typing import Optional
 
-DB_PATH = "chat.db"
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+DB_PATH = os.path.join(REPO_ROOT, "data", "chat.db")
 
 
 # ─── Internal ────────────────────────────────────────────────────────────────
@@ -16,6 +18,7 @@ def _conn() -> sqlite3.Connection:
 
 
 def _ensure_table():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     with _conn() as c:
         c.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
