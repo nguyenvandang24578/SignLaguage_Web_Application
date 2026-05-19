@@ -129,6 +129,51 @@ const TOPICS = [
       { label: 'Sách',      videoFile: 'sach.mp4',     glbFile: 'sach.glb',     desc: '<strong>Mô tả:</strong> Hai tay mô phỏng mở sách ra.' },
     ],
   },
+  {
+    id: 'bang-chu-cai',
+    label: 'Bảng chữ cái',
+    icon: '🔤', iconBg: '#eef4e3', level: 'Cơ bản',
+    desc: 'Học ký hiệu tay cho từng chữ cái trong bảng chữ cái tiếng Việt và các dấu thanh.',
+    words: [
+      /* ── Nguyên âm ── */
+      { label: 'A',        videoFile: 'a.mp4',     glbFile: 'a.glb',     desc: '<strong>Nguyên âm A:</strong> Bàn tay nắm, ngón cái giơ thẳng lên.' },
+      { label: 'Ă',        videoFile: 'aw.mp4',    glbFile: 'aw.glb',    desc: '<strong>Nguyên âm Ă:</strong> Ký hiệu chữ A, thêm động tác phụ biểu thị dấu breve.' },
+      { label: 'Â',        videoFile: 'aa.mp4',    glbFile: 'aa.glb',    desc: '<strong>Nguyên âm Â:</strong> Ký hiệu chữ A, thêm động tác phụ biểu thị dấu mũ.' },
+      { label: 'E',        videoFile: 'e.mp4',     glbFile: 'e.glb',     desc: '<strong>Nguyên âm E:</strong> Các ngón tay duỗi, lòng bàn tay hướng ra ngoài.' },
+      { label: 'Ê',        videoFile: 'ee.mp4',    glbFile: 'ee.glb',    desc: '<strong>Nguyên âm Ê:</strong> Ký hiệu chữ E, thêm động tác phụ biểu thị dấu mũ.' },
+      { label: 'I',        videoFile: 'i.mp4',     glbFile: 'i.glb',     desc: '<strong>Nguyên âm I:</strong> Ngón út giơ thẳng, các ngón còn lại nắm lại.' },
+      { label: 'O',        videoFile: 'o.mp4',     glbFile: 'o.glb',     desc: '<strong>Nguyên âm O:</strong> Ngón trỏ và ngón cái tạo vòng tròn chữ O.' },
+      { label: 'Ô',        videoFile: 'ow.mp4',    glbFile: 'ow.glb',    desc: '<strong>Nguyên âm Ô:</strong> Ký hiệu chữ O, thêm động tác phụ biểu thị dấu mũ.' },
+      { label: 'Ơ',        videoFile: 'oo.mp4',    glbFile: 'oo.glb',    desc: '<strong>Nguyên âm Ơ:</strong> Ký hiệu chữ O, thêm động tác phụ biểu thị dấu móc.' },
+      { label: 'U',        videoFile: 'u.mp4',     glbFile: 'u.glb',     desc: '<strong>Nguyên âm U:</strong> Ngón trỏ và giữa cong xuống tạo hình chữ U.' },
+      { label: 'Ư',        videoFile: 'uw.mp4',    glbFile: 'uw.glb',    desc: '<strong>Nguyên âm Ư:</strong> Ký hiệu chữ U, thêm động tác phụ biểu thị dấu móc.' },
+      { label: 'Y',        videoFile: 'y.mp4',     glbFile: 'y.glb',     desc: '<strong>Nguyên âm Y:</strong> Ngón út và ngón trỏ duỗi thẳng, các ngón còn lại nắm.' },
+      /* ── Phụ âm ── */
+      { label: 'B',        videoFile: 'b.mp4',     glbFile: 'b.glb',     desc: '<strong>Phụ âm B:</strong> Bàn tay phải tạo hình chữ B, lòng bàn tay hướng ra ngoài.' },
+      { label: 'C',        videoFile: 'c.mp4',     glbFile: 'c.glb',     desc: '<strong>Phụ âm C:</strong> Bàn tay tạo hình cong như chữ C.' },
+      { label: 'D',        videoFile: 'd.mp4',     glbFile: 'd.glb',     desc: '<strong>Phụ âm D:</strong> Ngón trỏ duỗi thẳng, các ngón còn lại cong theo.' },
+      { label: 'Đ',        videoFile: 'dd.mp4',    glbFile: 'dd.glb',    desc: '<strong>Phụ âm Đ:</strong> Ký hiệu chữ D, thêm động tác ngang biểu thị nét gạch.' },
+      { label: 'G',        videoFile: 'g.mp4',     glbFile: 'g.glb',     desc: '<strong>Phụ âm G:</strong> Ngón trỏ và cái duỗi song song, hướng sang ngang.' },
+      { label: 'H',        videoFile: 'h.mp4',     glbFile: 'h.glb',     desc: '<strong>Phụ âm H:</strong> Ngón trỏ và giữa duỗi thẳng song song, hướng ra ngoài.' },
+      { label: 'K',        videoFile: 'k.mp4',     glbFile: 'k.glb',     desc: '<strong>Phụ âm K:</strong> Ngón trỏ duỗi lên, ngón giữa hướng ra ngang.' },
+      { label: 'L',        videoFile: 'l.mp4',     glbFile: 'l.glb',     desc: '<strong>Phụ âm L:</strong> Ngón trỏ và ngón cái tạo hình chữ L vuông góc.' },
+      { label: 'M',        videoFile: 'm.mp4',     glbFile: 'm.glb',     desc: '<strong>Phụ âm M:</strong> Ba ngón (trỏ, giữa, áp út) cúp xuống trên ngón cái.' },
+      { label: 'N',        videoFile: 'n.mp4',     glbFile: 'n.glb',     desc: '<strong>Phụ âm N:</strong> Hai ngón (trỏ, giữa) cúp xuống trên ngón cái.' },
+      { label: 'P',        videoFile: 'p.mp4',     glbFile: 'p.glb',     desc: '<strong>Phụ âm P:</strong> Ngón giữa hướng xuống, ngón trỏ duỗi sang ngang.' },
+      { label: 'Q',        videoFile: 'q.mp4',     glbFile: 'q.glb',     desc: '<strong>Phụ âm Q:</strong> Ngón trỏ và cái tạo vòng, hướng xuống dưới.' },
+      { label: 'R',        videoFile: 'r.mp4',     glbFile: 'r.glb',     desc: '<strong>Phụ âm R:</strong> Ngón trỏ và giữa bắt chéo nhau.' },
+      { label: 'S',        videoFile: 's.mp4',     glbFile: 's.glb',     desc: '<strong>Phụ âm S:</strong> Tất cả các ngón cong lại, lòng bàn tay hướng ra ngoài.' },
+      { label: 'T',        videoFile: 't.mp4',     glbFile: 't.glb',     desc: '<strong>Phụ âm T:</strong> Ngón cái kẹp giữa ngón trỏ và ngón giữa.' },
+      { label: 'V',        videoFile: 'v.mp4',     glbFile: 'v.glb',     desc: '<strong>Phụ âm V:</strong> Ngón trỏ và giữa duỗi thẳng tạo hình chữ V.' },
+      { label: 'X',        videoFile: 'x.mp4',     glbFile: 'x.glb',     desc: '<strong>Phụ âm X:</strong> Ngón trỏ cong hình móc câu.' },
+      /* ── Dấu thanh ── */
+      { label: 'Dấu sắc',   videoFile: 'sac.mp4',   glbFile: 'sac.glb',   desc: '<strong>Dấu sắc ( ´ ):</strong> Ngón trỏ vẽ đường chéo lên từ trái sang phải.' },
+      { label: 'Dấu huyền', videoFile: 'huyen.mp4', glbFile: 'huyen.glb', desc: '<strong>Dấu huyền ( ` ):</strong> Ngón trỏ vẽ đường chéo xuống từ trái sang phải.' },
+      { label: 'Dấu hỏi',   videoFile: 'hoi.mp4',   glbFile: 'hoi.glb',   desc: '<strong>Dấu hỏi ( ̉ ):</strong> Ngón trỏ vẽ hình cong nhỏ hướng xuống.' },
+      { label: 'Dấu ngã',   videoFile: 'nga.mp4',   glbFile: 'nga.glb',   desc: '<strong>Dấu ngã ( ̃ ):</strong> Ngón trỏ vẽ đường lượn sóng ngang.' },
+      { label: 'Dấu nặng',  videoFile: 'nang.mp4',  glbFile: 'nang.glb',  desc: '<strong>Dấu nặng ( . ):</strong> Ngón trỏ chỉ thẳng xuống, bấm nhẹ.' },
+    ],
+  },
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -226,6 +271,7 @@ function renderSidebar() {
   /* ── Topic list ── */
   topicNav.innerHTML = '';
   TOPICS.forEach((t, i) => {
+    if (t.id === 'bang-chu-cai') return; // Shown separately as hero card
     const item = document.createElement('div');
     item.className   = `topic-nav-item${i === 0 ? ' active' : ''}`;
     item.role        = 'listitem';
@@ -240,6 +286,100 @@ function renderSidebar() {
     item.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') selectTopic(i); };
     topicNav.appendChild(item);
   });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ALPHABET HERO CARD
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderAlphabetCard() {
+  const section = document.getElementById('alphabetSection');
+  if (!section) return;
+
+  const tIdx = TOPICS.findIndex(t => t.id === 'bang-chu-cai');
+  if (tIdx < 0) return;
+
+  const t = TOPICS[tIdx];
+
+  const vowels     = ['A','Ă','Â','E','Ê','I','O','Ô','Ơ','U','Ư','Y'];
+  const consonants = ['B','C','D','Đ','G','H','K','L','M','N','P','Q','R','S','T','V','X'];
+  const tones      = ['Dấu sắc','Dấu huyền','Dấu hỏi','Dấu ngã','Dấu nặng'];
+  const toChip     = (ch, extra = '') => `<div class="alph-chip${extra}">${ch}</div>`;
+
+  section.innerHTML = `
+    <div class="alphabet-card">
+
+      <!-- ── Compact header (always visible) ── -->
+      <div class="alphabet-card-header">
+        <div class="alphabet-card-header-left">
+          <div class="alphabet-badge">🔤 Nền tảng</div>
+          <div class="alphabet-header-text">
+            <h2 class="alphabet-title">Bảng Chữ Cái Ký Hiệu Việt Nam</h2>
+            <p class="alphabet-desc">${t.desc}</p>
+          </div>
+        </div>
+        <div class="alphabet-card-header-right">
+          <div class="alphabet-stats">
+            <div class="alph-stat"><span class="alph-stat-num">12</span><span class="alph-stat-label">Nguyên âm</span></div>
+            <div class="alph-stat-div"></div>
+            <div class="alph-stat"><span class="alph-stat-num">17</span><span class="alph-stat-label">Phụ âm</span></div>
+            <div class="alph-stat-div"></div>
+            <div class="alph-stat"><span class="alph-stat-num">5</span><span class="alph-stat-label">Dấu thanh</span></div>
+          </div>
+          <div class="alphabet-btn-row">
+            <button class="alphabet-btn-toggle" id="alphToggleBtn">
+              <span id="alphToggleLabel">Xem bảng chữ cái</span>
+              <svg id="alphToggleIcon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            <button class="alphabet-btn-primary" id="alphLearnBtn">📖 Học ngay</button>
+            <button class="alphabet-btn-secondary" id="alphPracticeBtn">🎯 Luyện tập</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Expandable grid (hidden by default) ── -->
+      <div class="alphabet-grid-wrap" id="alphGridWrap">
+        <div class="alphabet-grid-inner">
+          <div class="alph-group">
+            <div class="alph-group-label">Nguyên âm</div>
+            <div class="alphabet-chips">${vowels.map(v => toChip(v)).join('')}</div>
+          </div>
+          <div class="alph-group">
+            <div class="alph-group-label">Phụ âm</div>
+            <div class="alphabet-chips">${consonants.map(c => toChip(c)).join('')}</div>
+          </div>
+          <div class="alph-group">
+            <div class="alph-group-label">Dấu thanh</div>
+            <div class="alphabet-chips">${tones.map(tone => toChip(tone, ' alph-chip-tone')).join('')}</div>
+          </div>
+        </div>
+      </div>
+
+    </div>`;
+
+  /* Toggle expand */
+  let expanded = false;
+  const gridWrap   = document.getElementById('alphGridWrap');
+  const toggleBtn  = document.getElementById('alphToggleBtn');
+  const toggleIcon = document.getElementById('alphToggleIcon');
+  const toggleLbl  = document.getElementById('alphToggleLabel');
+
+  toggleBtn.onclick = () => {
+    expanded = !expanded;
+    gridWrap.classList.toggle('open', expanded);
+    toggleIcon.style.transform = expanded ? 'rotate(180deg)' : '';
+    toggleLbl.textContent = expanded ? 'Ẩn bảng chữ cái' : 'Xem bảng chữ cái';
+  };
+
+  document.getElementById('alphLearnBtn').onclick = () => {
+    selectTopic(tIdx);
+    document.querySelector('.content-area')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  document.getElementById('alphPracticeBtn').onclick = () => {
+    openPracticeWordModal(tIdx);
+  };
 }
 
 /* ── Search across all topics ─────────────────────────────────────────────── */
@@ -1521,5 +1661,6 @@ window.addEventListener('pagehide', safeStopCamera);
    BOOT
    ═══════════════════════════════════════════════════════════════════════════ */
 renderSidebar();
+renderAlphabetCard();
 renderFeaturedCard();
 selectLesson(0, 0);
