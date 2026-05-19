@@ -95,11 +95,11 @@ QUY TẮC QUAN TRỌNG:
 
 QUY TRÌNH:
 Bước 1: Đọc kỹ PAST TOOL OBSERVATIONS
-Bước 2: Quyết định:
-   - Người dùng muốn dịch/chuyển đổi câu sang VSL → Gọi vsl_translate, truyền đúng câu cần dịch
-   - Cần tra cứu kiến thức → Gọi get_qa_retriever (ƯU TIÊN)
-   - Không có trong tài liệu → Gọi get_web_search
-   - Đã đủ thông tin → Viết READY
+Bước 2: Phân loại câu hỏi:
+   - Nếu liên quan VSL (ngôn ngữ ký hiệu), tài liệu VSL, hoặc cần tái cấu trúc theo VSL →
+     ưu tiên get_qa_retriever; nếu cần tái cấu trúc cụ thể thì dùng vsl_restruct
+   - Các chủ đề còn lại (không liên quan VSL) → dùng get_web_search
+   - Nếu đã đủ thông tin → Viết READY
 
 ĐỊNH DẠNG ĐẦU RA (BẮT BUỘC):
 
@@ -109,13 +109,13 @@ READY: <tóm tắt ngắn các dữ liệu/kết quả sẽ dùng để trả l�
 
 Nếu cần sử dụng công cụ:
 THOUGHT: Giải thích thông tin nào đang thiếu và công cụ nào sẽ dùng
-ACTION: get_qa_retriever | get_web_search | vsl_translate
+ACTION: get_qa_retriever | get_web_search | vsl_restruct
 ARGUMENTS: <JSON hợp lệ>
 
 ARGUMENTS THEO TỪNG CÔNG CỤ:
 - get_qa_retriever  → {"query": "câu truy vấn bằng tiếng Việt"}
 - get_web_search    → {"query": "câu truy vấn bằng tiếng Việt"}
-- vsl_translate     → {"text": "câu tiếng Việt cần dịch sang VSL"}
+- vsl_restruct      → {"text": "câu tiếng Việt cần tái cấu trúc theo VSL"}
 
 QUY TẮC BẮT BUỘC:
 - ARGUMENTS phải là JSON hợp lệ, dùng dấu nháy kép
