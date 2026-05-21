@@ -53,11 +53,16 @@ body {
    CONTAINER & HEADER
    ========================================== */
 .container {
-    max-width: 920px;
+    max-width: 1100px;
     margin: 0 auto;
     padding: 24px 20px 40px;
     position: relative;
     z-index: 10;
+}
+
+/* Khi vào practice screen → expand container rộng hơn cho dual-panel */
+.container.practice-active {
+    max-width: 1400px;
 }
 
 .page-header {
@@ -246,14 +251,7 @@ body {
 /* ==========================================
    QUIZ SETUP SCREEN
    ========================================== */
-.setup-box {
-    background: var(--surface);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255,255,255,0.7);
-    padding: 32px;
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-lg);
-}
+/* setup-box → redefined below with scale-up */
 
 .setup-section { margin-bottom: 24px; }
 
@@ -647,13 +645,22 @@ body {
 .camera-wrapper {
     position: relative;
     width: 100%;
-    max-width: 640px;
-    margin: 0 auto 20px;
+    margin: 0;
     border-radius: var(--radius-md);
     overflow: hidden;
     border: 3px solid var(--accent);
     background: #0F172A;
-    aspect-ratio: 4/3;
+    aspect-ratio: 16/9;
+}
+
+/* MJPEG stream image — server vẽ skeleton + HUD, browser chỉ hiển thị */
+.camera-wrapper #webcam-video,
+.camera-wrapper img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    background: #0F172A;
 }
 
 .camera-wrapper video {
@@ -664,30 +671,65 @@ body {
     transform: scaleX(-1);
 }
 
-.camera-wrapper canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
+/* Overlays (countdown, collect-bar, success, badge ĐANG GHI) — phía trên canvas */
+.camera-wrapper .collect-bar-overlay,
+.camera-wrapper .countdown-overlay,
+.camera-wrapper .success-overlay {
+    z-index: 5;
+}
+.camera-wrapper::before {
+    z-index: 6;
 }
 
-/* Collect progress bar overlay */
+/* Collect progress bar overlay — đặt dưới cùng, thông báo rõ giai đoạn thu thập */
 .collect-bar-overlay {
     position: absolute;
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 6px;
-    background: rgba(0,0,0,0.3);
+    height: 10px;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    overflow: hidden;
 }
 
 .collect-bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--accent), #10B981);
-    transition: width 0.15s linear;
+    background: linear-gradient(90deg, #FFD54F, #FF6B6B);
+    transition: width 0.1s linear;
     width: 0%;
+    box-shadow: 0 0 8px rgba(255, 213, 79, 0.6);
+}
+
+/* Badge "ĐANG GHI" — chỉ hiện khi collect bar có width > 0 */
+.camera-wrapper::before {
+    content: "● ĐANG GHI";
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(220, 38, 38, 0.92);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    padding: 6px 12px;
+    border-radius: 20px;
+    z-index: 5;
+    opacity: 0;
+    transition: opacity 0.2s;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+    pointer-events: none;
+}
+
+.camera-wrapper.recording::before {
+    opacity: 1;
+    animation: rec-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
 }
 
 /* Countdown overlay */
@@ -696,19 +738,26 @@ body {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 4rem;
+    font-size: 6rem;
     font-weight: 900;
-    color: rgba(255,255,255,0.85);
-    text-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    color: #FFD54F;
+    text-shadow: 0 0 30px rgba(255, 213, 79, 0.8),
+                 0 4px 24px rgba(0,0,0,0.7);
     pointer-events: none;
     display: none;
+    z-index: 10;
 }
 
-.countdown-overlay.show { display: block; animation: countPop 0.3s ease; }
+/* JS toggle class .active — match với handleWSMessage */
+.countdown-overlay.active {
+    display: block;
+    animation: countPop 0.4s ease;
+}
 
 @keyframes countPop {
-    from { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
-    to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    0%   { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
+    40%  { transform: translate(-50%, -50%) scale(0.9); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 
 /* Success overlay */
@@ -731,7 +780,7 @@ body {
 /* AI prediction panel */
 .ai-panel {
     display: flex;
-    gap: 16px;
+    gap: 18px;
     justify-content: center;
     flex-wrap: wrap;
     margin-bottom: 16px;
@@ -741,9 +790,9 @@ body {
     background: #F8FAFC;
     border: 2px solid #E2E8F0;
     border-radius: var(--radius-md);
-    padding: 12px 20px;
-    min-width: 120px;
-    transition: all 0.3s;
+    padding: 16px 28px;
+    min-width: 140px;
+    transition: transform 0.25s ease, border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
 }
 
 .ai-prediction-card.top1 {
@@ -756,25 +805,52 @@ body {
     background: var(--correct-bg);
 }
 
+/* Hiệu ứng khi đúng — pulse + glow xanh */
+.ai-prediction-card.result-correct {
+    border-color: var(--correct-border, #16a34a);
+    background: var(--correct-bg, #dcfce7);
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.18),
+                0 8px 24px rgba(34, 197, 94, 0.25);
+    animation: pred-pulse-correct 0.6s ease-out;
+}
+
+/* Hiệu ứng khi sai — shake nhẹ + viền đỏ */
+.ai-prediction-card.result-wrong {
+    border-color: var(--wrong-border, #dc2626);
+    background: var(--wrong-bg, #fee2e2);
+    animation: pred-shake-wrong 0.4s ease-in-out;
+}
+
+@keyframes pred-pulse-correct {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.08); }
+    100% { transform: scale(1); }
+}
+@keyframes pred-shake-wrong {
+    0%, 100% { transform: translateX(0); }
+    25%      { transform: translateX(-6px); }
+    75%      { transform: translateX(6px); }
+}
+
 .ai-prediction-card .rank {
     font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--text-muted);
-    margin-bottom: 4px;
+    margin-bottom: 6px;
 }
 
 .ai-prediction-card .word {
-    font-size: 1.1rem;
+    font-size: 1.25rem;
     font-weight: 800;
     color: var(--text-primary);
+    line-height: 1.2;
 }
 
+/* Bỏ score — element vẫn tồn tại trong DOM nhưng ẩn hoàn toàn */
 .ai-prediction-card .score {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text-secondary);
+    display: none;
 }
 
 /* Practice actions */
@@ -1027,7 +1103,117 @@ body {
    CHALLENGE MODE: 3-column card grid + setup info + dual-panel practice
    ========================================== */
 .card-grid-3 {
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+}
+
+/* ── MAIN MENU: 2 cards bự chiếm center ── */
+.card-grid-main {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 32px;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 48px 40px;
+    background: rgba(255,255,255,0.6);
+    backdrop-filter: blur(20px);
+    border-radius: var(--radius-xl);
+    border: 1px solid rgba(255,255,255,0.5);
+    box-shadow: var(--shadow-lg);
+}
+
+.card-grid-main .card {
+    padding: 52px 36px 40px;
+    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.card-grid-main .icon-wrapper {
+    font-size: 3.2rem;
+    margin-bottom: 24px;
+    width: 96px;
+    height: 96px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--accent-soft);
+}
+
+.card-grid-main .card h3 {
+    font-size: 1.5rem;
+    margin-bottom: 12px;
+}
+
+.card-grid-main .card p {
+    font-size: 0.95rem;
+    max-width: 300px;
+    line-height: 1.65;
+}
+
+.card-grid-main .card-tag {
+    font-size: 0.9rem;
+    padding: 7px 20px;
+}
+
+.card-grid-main .card-tag i {
+    margin-right: 4px;
+    font-size: 0.8rem;
+}
+
+/* ── PRACTICE MENU: 3 cards trong khung glass ── */
+.card-grid-wrapped {
+    padding: 40px 36px;
+    background: rgba(255,255,255,0.6);
+    backdrop-filter: blur(20px);
+    border-radius: var(--radius-xl);
+    border: 1px solid rgba(255,255,255,0.5);
+    box-shadow: var(--shadow-lg);
+}
+
+.card-grid-3 .card {
+    padding: 40px 24px 28px;
+    min-height: 260px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.card-grid-3 .icon-wrapper {
+    font-size: 3.2rem;
+    margin-bottom: 18px;
+    width: 84px;
+    height: 84px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--accent-soft);
+}
+
+.card-grid-3 .card h3 {
+    font-size: 1.25rem;
+}
+
+/* ── SETUP BOX: rộng hơn, centered ── */
+.setup-box {
+    background: var(--surface);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.7);
+    padding: 40px 36px;
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    max-width: 680px;
+    margin: 0 auto;
+}
+
+/* ── RESULTS BOX: rộng hơn ── */
+.results-box {
+    max-width: 680px;
+    margin: 0 auto;
 }
 
 .card-challenge {
@@ -1056,30 +1242,16 @@ body {
     flex-shrink: 0;
     margin-top: 2px;
 }
+}
 
 /* Dual-panel layout: camera + reference side by side */
 .practice-stage {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 20px;
+    display: block;
     margin-bottom: 20px;
-}
-.practice-stage.has-reference {
-    grid-template-columns: 1.4fr 1fr;
-}
-@media (max-width: 760px) {
-    .practice-stage.has-reference {
-        grid-template-columns: 1fr;
-    }
 }
 
 .challenge-reference {
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    background: #0F172A;
-    box-shadow: var(--shadow-lg);
-    display: flex;
-    flex-direction: column;
+    display: none !important;
 }
 .challenge-reference .ref-header {
     padding: 10px 14px;
@@ -1101,8 +1273,8 @@ body {
 }
 .challenge-reference .ref-video {
     width: 100%;
-    height: 100%;
-    min-height: 240px;
+    flex: 1;
+    min-height: 200px;
     object-fit: contain;
     background: #000;
 }

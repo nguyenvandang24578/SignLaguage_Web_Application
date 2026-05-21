@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Holistic Latency Benchmark</title>
+<style>
+  body { font-family: monospace; background:#0a0a0a; color:#0f0; padding:20px; }
+  video { width:480px; height:360px; background:#222; border:1px solid #0f0; }
+  #stats { margin-top:20px; font-size:14px; line-height:1.6; }
+  #stats div { margin-bottom:4px; }
+  .bad  { color:#f44; }
+  .ok   { color:#fc0; }
+  .good { color:#0f8; }
+  button { background:#0f0; color:#000; border:none; padding:8px 20px; font-weight:bold; cursor:pointer; }
+</style>
+</head>
+<body>
+<h2>MediaPipe Holistic — Per-frame Latency Test</h2>
+<p>Bật camera, để tay vào khung, đợi 30 frame để có số ổn định.</p>
+
+<video id="vid" autoplay playsinline muted></video>
+<div id="stats">
+  <div>Frames processed:    <span id="count">0</span></div>
+  <div>Last frame latency:  <span id="last">—</span> ms</div>
+  <div>Average (last 30):   <span id="avg">—</span> ms</div>
+  <div>P95 (last 30):       <span id="p95">—</span> ms</div>
+  <div>Verdict:             <span id="verdict">—</span></div>
+</div>
+
+<!-- MediaPipe Holistic via CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"        crossorigin="anonymous"></script>
+
+<script>
+const vid = document.getElementById('vid');
+const $count   = document.getElementById('count');
+const $last    = document.getElementById('last');
+const $avg     = document.getElementById('avg');
+const $p95     = document.getElementById('p95');
+const $verdict = document.getElementById('verdict');
+
+const latencies = [];   // ring buffer for last 30
+let frameStart  = 0;
+let totalCount  = 0;
+
+const holistic = new Holistic({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`,
+});
+holistic.setOptions({
+    modelComplexity:        0,   // 0 = lite (giống server.py của bạn)
+    smoothLandmarks:        true,
+    enableSegmentation:     false,
+    refineFaceLandmarks:    false,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence:  0.5,
+});
+
+holistic.onResults((results) => {
+    const elapsed = performance.now() - frameStart;
+    latencies.push(elapsed);
+    if (latencies.length > 30) latencies.shift();
+    totalCount++;
+
+    $count.textContent = totalCount;
+    $last.textContent  = elapsed.toFixed(1);
+
+    if (latencies.length >= 10) {
+        const avg = latencies.reduce((a,b)=>a+b,0) / latencies.length;
+        const sorted = [...latencies].sort((a,b)=>a-b);
+        const p95 = sorted[Math.floor(sorted.length * 0.95)];
+        $avg.textContent = avg.toFixed(1);
+        $p95.textContent = p95.toFixed(1);
+
+        let verdict, cls;
+        if (avg < 50)       { verdict = 'EXCELLENT — block-based mượt 100%';     cls = 'good'; }
+        else if (avg < 80)  { verdict = 'GOOD — block-based OK, streaming hạn chế'; cls = 'good'; }
+        else if (avg < 120) { verdict = 'MARGINAL — block-based OK, capture có thể drop frame'; cls = 'ok'; }
+        else                { verdict = 'SLOW — cần giảm resolution hoặc dùng Tasks-Vision API'; cls = 'bad'; }
+        $verdict.textContent = verdict;
+        $verdict.className   = cls;
+    }
+});
+
+async function main() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: 'user' },
+    });
+    vid.srcObject = stream;
+    await vid.play();
+
+    // Camera_utils.Camera tự động loop: capture frame → holistic.send → onResults
+    const camera = new Camera(vid, {
+        onFrame: async () => {
+            frameStart = performance.now();
+            await holistic.send({ image: vid });
+        },
+        width:  640,
+        height: 480,
+    });
+    camera.start();
+}
+
+main().catch(err => {
+    $verdict.textContent = `ERROR: ${err.message}`;
+    $verdict.className   = 'bad';
+});
+</script>
+
+</body>
+</html>

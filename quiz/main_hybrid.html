@@ -3,11 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kiểm Tra Ký Hiệu | Sign Language Web</title>
+    <title>Kiểm Tra Ký Hiệu (HYBRID) | Sign Language Web</title>
     <link rel="stylesheet" href="quiz.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* Override CSS for hybrid mode: show <video> + canvas overlay */
+        .camera-wrapper video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transform: scaleX(-1);   /* mirror for selfie view */
+        }
+        .camera-wrapper canvas#skeleton-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 3;
+        }
+        .camera-wrapper img#webcam-video {
+            display: none;  /* hide MJPEG img from old quiz.js */
+        }
+        /* Hybrid mode badge */
+        .hybrid-badge {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(99, 102, 241, 0.92);
+            color: #fff;
+            font-size: 0.7rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            padding: 4px 10px;
+            border-radius: 20px;
+            z-index: 5;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+    </style>
 </head>
 <body>
 
@@ -20,7 +57,6 @@
     </div>
 
     <main class="container">
-        <!-- HEADER -->
         <div class="page-header">
             <div class="header-left">
                 <button id="back-btn" class="back-btn-outline" style="display: none;">
@@ -29,52 +65,40 @@
                 <h1 id="header-title">Trạm Kiểm Tra Năng Lực</h1>
             </div>
             <div class="header-right" id="score-display" style="display: none;">
-                <div class="score-pill correct">
-                    <i class="fas fa-check"></i> <span id="score-correct">0</span>
-                </div>
-                <div class="score-pill wrong">
-                    <i class="fas fa-times"></i> <span id="score-wrong">0</span>
-                </div>
-                <div class="score-pill total">
-                    <span id="score-progress">0</span>/<span id="score-total">10</span>
-                </div>
+                <div class="score-pill correct"><i class="fas fa-check"></i> <span id="score-correct">0</span></div>
+                <div class="score-pill wrong"><i class="fas fa-times"></i> <span id="score-wrong">0</span></div>
+                <div class="score-pill total"><span id="score-progress">0</span>/<span id="score-total">10</span></div>
             </div>
         </div>
 
-        <!-- PROGRESS BAR -->
         <div id="quiz-progress-bar" class="quiz-progress-bar" style="display: none;">
             <div class="progress-track">
                 <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
             </div>
         </div>
 
-        <!-- ==========================================
-             SCREEN 1: MAIN MENU
-             ========================================== -->
+        <!-- SCREEN 1: MAIN MENU -->
         <div id="screen-main-menu" class="screen active">
             <h2 class="screen-title">Bạn muốn rèn luyện kỹ năng nào?</h2>
-            <div class="card-grid card-grid-main">
+            <div class="card-grid">
                 <div class="card card-quiz" onclick="switchScreen('screen-quiz-setup')">
                     <div class="card-glow"></div>
-                    <div class="icon-wrapper"><i class="fas fa-language"></i></div>
+                    <div class="icon-wrapper"><i class="fas fa-hands-asl-interpreting"></i></div>
                     <h3>Giải Mã Ký Hiệu</h3>
-                    <p>Xem video cử chỉ ngôn ngữ ký hiệu và chọn đáp án đúng. Rèn luyện phản xạ đọc hiểu.</p>
+                    <p>Xem video cử chỉ ngôn ngữ ký hiệu và chọn đáp án đúng.</p>
                     <div class="card-tag">Quiz trắc nghiệm</div>
                 </div>
-
                 <div class="card card-practice" onclick="switchScreen('screen-practice-menu')">
                     <div class="card-glow"></div>
-                    <div class="icon-wrapper"><i class="fas fa-robot"></i></div>
+                    <div class="icon-wrapper"><i class="fas fa-video"></i></div>
                     <h3>Thực Hành Cùng AI</h3>
-                    <p>Bật Camera, hệ thống AI phân tích cử chỉ và chấm điểm thời gian thực.</p>
-                    <div class="card-tag"><i class="fas fa-microchip"></i> Camera + AI</div>
+                    <p>AI chạy NGAY TRÊN BROWSER (Hybrid mode). Bật Camera, hệ thống AI phân tích cử chỉ realtime.</p>
+                    <div class="card-tag">Hybrid AI</div>
                 </div>
             </div>
         </div>
 
-        <!-- ==========================================
-             SCREEN 1.5: QUIZ SETUP
-             ========================================== -->
+        <!-- SCREEN 1.5: QUIZ SETUP -->
         <div id="screen-quiz-setup" class="screen">
             <h2 class="screen-title">Cài đặt bài kiểm tra</h2>
             <div class="setup-box">
@@ -89,7 +113,6 @@
                         <button class="chip" data-topic="hygiene">Vệ sinh</button>
                     </div>
                 </div>
-
                 <div class="setup-section">
                     <label class="setup-label"><i class="fas fa-list-ol"></i> Số câu hỏi</label>
                     <div class="chip-group" id="count-chips">
@@ -99,7 +122,6 @@
                         <button class="chip" data-count="49">Toàn bộ</button>
                     </div>
                 </div>
-
                 <div class="setup-section">
                     <label class="setup-label"><i class="fas fa-clock"></i> Giới hạn thời gian</label>
                     <div class="chip-group" id="timer-chips">
@@ -108,19 +130,16 @@
                         <button class="chip" data-timer="5">5 giây / câu</button>
                     </div>
                 </div>
-
                 <button class="start-quiz-btn" onclick="launchQuiz()">
                     <i class="fas fa-play"></i> Bắt Đầu Kiểm Tra
                 </button>
             </div>
         </div>
 
-        <!-- ==========================================
-             SCREEN 2: PRACTICE MENU
-             ========================================== -->
+        <!-- SCREEN 2: PRACTICE MENU -->
         <div id="screen-practice-menu" class="screen">
             <h2 class="screen-title">Chọn giáo án luyện tập</h2>
-            <div class="card-grid card-grid-3 card-grid-wrapped">
+            <div class="card-grid card-grid-3">
                 <div class="card card-specific" onclick="startPractice('specific')">
                     <div class="card-glow"></div>
                     <div class="icon-wrapper"><i class="fas fa-hand-sparkles"></i></div>
@@ -128,7 +147,6 @@
                     <p>Chọn một từ cụ thể và múa lại cho đến khi AI nhận dạng chuẩn xác.</p>
                     <div class="card-tag">Tự chọn từ</div>
                 </div>
-
                 <div class="card card-random" onclick="startPractice('random-single')">
                     <div class="card-glow"></div>
                     <div class="icon-wrapper"><i class="fas fa-shuffle"></i></div>
@@ -136,7 +154,6 @@
                     <p>AI ra đề một từ ngẫu nhiên, luyện đến khi đúng thì dừng.</p>
                     <div class="card-tag">Tự do</div>
                 </div>
-
                 <div class="card card-challenge" onclick="startPractice('challenge')">
                     <div class="card-glow"></div>
                     <div class="icon-wrapper"><i class="fas fa-trophy"></i></div>
@@ -147,9 +164,7 @@
             </div>
         </div>
 
-        <!-- ==========================================
-             SCREEN 2.5: CHALLENGE SETUP
-             ========================================== -->
+        <!-- SCREEN 2.5: CHALLENGE SETUP -->
         <div id="screen-challenge-setup" class="screen">
             <h2 class="screen-title">Cài đặt thử thách</h2>
             <div class="setup-box">
@@ -161,25 +176,20 @@
                         <button class="chip" data-count="20">20 từ</button>
                     </div>
                 </div>
-
                 <div class="setup-info">
                     <i class="fas fa-info-circle"></i>
                     <div>
                         Mỗi từ sẽ hiện video mẫu để bạn quan sát rồi thực hiện trước camera.
                         AI sẽ chấm pass/fail và tự động chuyển sang từ tiếp theo khi bạn làm đúng.
-                        Có thể bỏ qua nếu thấy khó.
                     </div>
                 </div>
-
                 <button class="start-quiz-btn" onclick="launchChallenge()">
                     <i class="fas fa-play"></i> Bắt Đầu Thử Thách
                 </button>
             </div>
         </div>
 
-        <!-- ==========================================
-             SCREEN 3: QUIZ
-             ========================================== -->
+        <!-- SCREEN 3: QUIZ -->
         <div id="screen-quiz" class="screen">
             <div class="quiz-box">
                 <div class="quiz-top-bar">
@@ -204,19 +214,14 @@
             </div>
         </div>
 
-        <!-- ==========================================
-             SCREEN 4: RESULTS
-             ========================================== -->
+        <!-- SCREEN 4: RESULTS -->
         <div id="screen-results" class="screen">
             <div class="results-box" id="results-box"></div>
         </div>
 
-        <!-- ==========================================
-             SCREEN 5: PRACTICE (Camera + AI)
-             ========================================== -->
+        <!-- SCREEN 5: PRACTICE (HYBRID — video + canvas overlay) -->
         <div id="screen-practice" class="screen">
             <div class="practice-box">
-                <!-- Header: target word + state pill -->
                 <div class="practice-header">
                     <div class="practice-target">
                         <span class="label">Hãy múa:</span>
@@ -227,16 +232,16 @@
                     </div>
                 </div>
 
-                <!-- Camera status -->
                 <div class="camera-status connecting" id="camera-status" style="display:none;">
                     <i class="fas fa-spinner fa-spin"></i> Đang kết nối Camera...
                 </div>
 
-                <!-- Dual-panel layout: camera (always) + reference (challenge only) -->
                 <div class="practice-stage">
-                    <!-- Camera: MJPEG stream — server vẽ skeleton + HUD, browser chỉ hiển thị -->
+                    <!-- ─── HYBRID: video element (local stream) + canvas overlay (skeleton) ─── -->
                     <div class="camera-wrapper" id="camera-wrapper">
-                        <img id="webcam-video" alt="Camera">
+                        <video id="webcam-video" autoplay playsinline muted></video>
+                        <canvas id="skeleton-canvas"></canvas>
+                        <div class="hybrid-badge">⚡ HYBRID AI</div>
                         <div class="collect-bar-overlay">
                             <div class="collect-bar-fill" id="collect-bar"></div>
                         </div>
@@ -247,11 +252,9 @@
                         </div>
                     </div>
 
-                    <!-- Challenge reference video (shown only in challenge mode) -->
                     <div class="challenge-reference" id="challenge-reference" style="display:none;"></div>
                 </div>
 
-                <!-- AI predictions -->
                 <div class="ai-panel" id="ai-panel">
                     <div class="ai-prediction-card" id="pred-1">
                         <div class="rank">Top 1</div>
@@ -270,7 +273,6 @@
                     </div>
                 </div>
 
-                <!-- Action buttons -->
                 <div class="practice-actions" id="practice-actions">
                     <button class="practice-btn stop" onclick="stopPractice()">
                         <i class="fas fa-stop"></i> Dừng lại
@@ -289,7 +291,6 @@
         </div>
     </main>
 
-    <!-- MODAL: CHỌN TỪ -->
     <div id="custom-prompt-modal" class="modal-overlay">
         <div class="modal-card">
             <h3><i class="fas fa-hand-sparkles"></i> Luyện Tập Chỉ Định</h3>
@@ -306,6 +307,7 @@
         </div>
     </div>
 
-    <script src="quiz.js"></script>
+    <!-- IMPORTANT: type="module" required for ES imports of MediaPipe Tasks JS -->
+    <script type="module" src="quiz_hybrid.js"></script>
 </body>
 </html>
