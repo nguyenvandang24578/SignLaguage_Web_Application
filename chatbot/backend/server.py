@@ -93,5 +93,13 @@ async def get_history_detail(session_id: str):
         raise HTTPException(status_code=404, detail="Không tìm thấy phiên chat.")
     return {"session": session}
 
+@app.delete("/api/history/{session_id}")
+async def delete_history(session_id: str):
+    """API xoá một phiên chat"""
+    success = ChatHistory.delete_session(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiên chat.")
+    return {"message": "Đã xoá phiên thành công.", "session_id": session_id}
+
 if __name__ == "__main__":
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False)

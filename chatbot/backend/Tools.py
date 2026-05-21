@@ -198,7 +198,7 @@ class WebSearcher:
                 "results": []
             }
 
-def vsl_translate(text: str) -> Dict:
+def vsl_restruct(text: str) -> Dict:
 
     config = get_config()
 
@@ -235,7 +235,7 @@ def vsl_translate(text: str) -> Dict:
             "max_tokens": 128
         }
 
-        logger.info(f"Calling LLaMA server at {config.LLAMA_SERVER_URL} for VSL translation")
+        logger.info(f"Calling LLaMA server at {config.LLAMA_SERVER_URL} for VSL restruct")
         r = requests.post(
             config.LLAMA_SERVER_URL,
             json=payload,
@@ -246,7 +246,7 @@ def vsl_translate(text: str) -> Dict:
         data = r.json()
 
         result = data["choices"][0]["message"]["content"].strip()
-        logger.info(f"VSL translation successful: '{text[:50]}...' -> '{result[:50]}...'")
+        logger.info(f"VSL restruct successful: '{text[:50]}...' -> '{result[:50]}...'")
 
         return {
             "context": result,
@@ -283,9 +283,9 @@ def vsl_translate(text: str) -> Dict:
             "original": text
         }
     except Exception as e:
-        logger.error(f"VSL translate unexpected error: {e}")
+        logger.error(f"VSL restruct unexpected error: {e}")
         return {
-            "context": f"Lỗi dịch VSL: {str(e)}",
+            "context": f"Lỗi restruct VSL: {str(e)}",
             "source": "VSL Translation Error",
             "num_results": 0,
             "original": text
@@ -329,7 +329,7 @@ def get_web_search(query: str) -> Dict:
 TOOLS_MAPPING_TO_FUNC = {
     "get_qa_retriever": get_qa_retriever,
     "get_web_search": get_web_search,
-    "vsl_translate": vsl_translate
+    "vsl_restruct": vsl_restruct
 }
 
 AGENT_TOOLS_LIST = {
@@ -351,8 +351,8 @@ AGENT_TOOLS_LIST = {
             'args': 'query (str)'
         },
         {
-            "name": "vsl_translate",
-            "description": "Dịch tiếng Việt sang ngôn ngữ ký hiệu Việt Nam (VSL)",
+            "name": "vsl_restruct",
+            "description": "Tái cấu trúc câu tiếng Việt theo ngữ pháp VSL",
             "args": "text (str)"
         }
     ]

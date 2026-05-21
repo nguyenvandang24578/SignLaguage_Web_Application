@@ -6,8 +6,14 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1"
     />
-    <meta name="color-scheme" content="dark" />
-    <title>Sign Language Chatbot</title>
+    <meta name="color-scheme" content="light" />
+    <title>VNSignMate Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -45,31 +51,13 @@
         <div id="session-list">
           <div class="sidebar-empty">No conversations yet</div>
         </div>
-
-        <div class="sidebar-footer">
-          <button class="settings-btn" type="button">
-            <span>Settings</span>
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              style="width: 14px; height: 14px"
-            >
-              <circle cx="12" cy="12" r="3" />
-              <path
-                d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"
-              />
-            </svg>
-          </button>
-        </div>
       </aside>
 
       <!-- ── MAIN ── -->
       <div class="main">
         <div class="messages" id="messages">
           <div class="welcome" id="welcome">
-            <h2>Sign Language Chatbot</h2>
+            <h2>VNSignMateVN Assistant</h2>
             <p>Nhập tin nhắn để bắt đầu</p>
           </div>
         </div>
@@ -99,8 +87,54 @@
         </div>
       </div>
     </div>
-    <!-- /.app -->
 
+    <!-- ── TOAST ── -->
+    <div class="toast" id="toast"></div>
+
+    <!-- ── CONFIRM DELETE MODAL ── -->
+    <div class="confirm-modal-overlay" id="confirm-modal">
+      <div class="confirm-modal">
+        <p id="confirm-modal-title">Xoá cuộc trò chuyện này?</p>
+        <div class="confirm-modal-actions">
+          <button class="btn-cancel" id="btn-confirm-no" type="button">
+            Huỷ
+          </button>
+          <button class="btn-delete" id="btn-confirm-yes" type="button">
+            Xoá
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── AVATAR MODAL ── -->
+    <div class="avatar-modal-overlay" id="avatar-modal-overlay">
+      <div class="avatar-modal">
+        <h3 id="avatar-modal-title">Đổi ảnh đại diện</h3>
+
+        <div class="avatar-preview-wrap">
+          <div class="avatar-preview">
+            <img id="avatar-preview-img" src="" alt="Preview" />
+          </div>
+        </div>
+
+        <div class="avatar-modal-actions">
+          <button class="avatar-pick-btn" id="btn-pick-file" type="button">
+            📁 Chọn ảnh từ máy tính
+          </button>
+          <button class="avatar-pick-btn" id="btn-reset-avatar" type="button">
+            🔄 Đặt lại ảnh mặc định
+          </button>
+        </div>
+
+        <div class="avatar-modal-footer">
+          <button class="btn-cancel" id="btn-modal-cancel" type="button">
+            Huỷ
+          </button>
+          <button class="btn-save" id="btn-modal-save" type="button">
+            Lưu
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Hidden file input -->
