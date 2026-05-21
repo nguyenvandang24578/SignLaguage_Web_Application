@@ -25,13 +25,17 @@ let skipFrames = 0;
 // ─── LOAD MODEL ──────────────────────────────────────────────────────────────
 export async function loadGRU(modelPath = "./models/gru.onnx") {
     try {
-        gruSession = await ort.InferenceSession.create(modelPath);
-        console.log("[GRU] ✅ Model loaded! Inputs:", gruSession.inputNames, "Outputs:", gruSession.outputNames);
+        gruSession = await ort.InferenceSession.create(modelPath, {
+            executionProviders: ['webgpu', 'wasm'],
+        });
+
+        // Log xem thực tế đang dùng backend nào
+        console.log("[GRU] ✅ Model loaded, backend:", gruSession.handler?.backend ?? 'unknown');
+
     } catch (e) {
         console.error("[GRU] ❌ Failed to load model:", e);
     }
 }
-
 export async function pushKeypointsAndPredict(landmarks) {
     if (!gruSession) {
         console.warn("[GRU] ⚠️ Session not ready — model chưa load xong!");

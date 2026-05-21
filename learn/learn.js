@@ -11,7 +11,6 @@ import {
   HandLandmarker,
   FilesetResolver,
 } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm';
-await loadGRU("./models/gru.onnx");
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CONSTANTS
@@ -19,6 +18,9 @@ await loadGRU("./models/gru.onnx");
 const HF_BASE   = 'https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main';
 const VIDEO_DIR = `${HF_BASE}/learn/videos/`;
 const GLB_DIR   = `${HF_BASE}/learn/glbs/`;
+
+/* GLB in-memory cache — tránh fetch lại mỗi lần chuyển bài */
+const glbCache = new Map(); // glbFile → gltf object
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TOPIC DATA
@@ -618,6 +620,14 @@ function selectLesson(tIdx, wIdx) {
   } else {
     loadGlb(w.glbFile);
   }
+
+  // Preload GLB bài tiếp theo vào cache trong nền (silent, không block UI)
+  const next = TOPICS[tIdx].words[wIdx + 1];
+  if (next?.glbFile && !glbCache.has(next.glbFile)) {
+    new GLTFLoader().load(GLB_DIR + next.glbFile, (gltf) => {
+      glbCache.set(next.glbFile, gltf);
+    });
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -703,11 +713,13 @@ window.switchViewTab = function (tab) {
   if (glbCtrl)   glbCtrl.style.display   = tab === 'glb'   ? 'flex' : 'none';
 
   if (tab === 'video') {
+    // Giải phóng WebGL context khi không dùng 3D — tránh conflict với MediaPipe
+    if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
+    if (renderer) { renderer.dispose(); renderer = null; }
     if (canvas)  canvas.style.display  = 'none';
     if (glbHint) glbHint.style.display = 'none';
     noGlb?.classList.remove('show');
     if (vid) { vid.style.display = 'block'; }
-    if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
   } else {
     if (vid) { vid.pause(); vid.style.display = 'none'; }
     noVid?.classList.remove('show');
@@ -846,37 +858,73 @@ function clearGlbScene() {
   if (mixer) { mixer.stopAllAction(); mixer = null; }
 }
 
+/* Gắn model vào scene — dùng chung cho cache hit và fetch mới */
+function _attachGltf(modelScene, animations) {
+  modelScene.userData.isSign = true;
+  scene.add(modelScene);
+
+  // Camera cố định — góc nhìn nhất quán cho mọi từ
+  camera.position.set(0.019, 0.573, 3.365);
+  orbitCtrl.target.set(0, 0.5, 0);
+  orbitCtrl.update();
+
+  if (animations?.length) {
+    mixer = new THREE.AnimationMixer(modelScene);
+    mixer.clipAction(animations[0]).setLoop(THREE.LoopRepeat, Infinity).play();
+    animPlaying = true;
+    const btn = document.getElementById('btnPlayAnim');
+    if (btn) { btn.textContent = '⏸ Animation: Bật'; btn.classList.add('on'); }
+  }
+}
+
+/* Spinner style (inject once) */
+if (!document.getElementById('glbSpinStyle')) {
+  const s = document.createElement('style');
+  s.id = 'glbSpinStyle';
+  s.textContent = '@keyframes glbSpin{to{transform:rotate(360deg)}}';
+  document.head.appendChild(s);
+}
+
 function loadGlb(glbFile) {
   clearGlbScene();
   const noGlb = document.getElementById('noGlb');
   noGlb?.classList.remove('show');
 
-  const myLoadId = ++glbLoadId; // capture current ID; stale callbacks will bail
+  // Hiện loading spinner
+  const screen = document.getElementById('viewerScreen');
+  screen?.querySelector('#glbSpinner')?.remove();
+  screen?.insertAdjacentHTML('beforeend', `
+    <div id="glbSpinner" style="
+      position:absolute;inset:0;display:flex;align-items:center;
+      justify-content:center;background:rgba(10,14,26,.65);z-index:20;
+      font-size:.85rem;color:rgba(255,255,255,.7);gap:10px;flex-direction:column">
+      <div style="width:32px;height:32px;border:3px solid rgba(255,255,255,.15);
+        border-top-color:#6B95C5;border-radius:50%;animation:glbSpin .7s linear infinite"></div>
+      Đang tải mô hình 3D…
+    </div>`);
+
+  // ── Cache hit: dùng luôn, không fetch lại ──
+  if (glbCache.has(glbFile)) {
+    document.getElementById('glbSpinner')?.remove();
+    const cached = glbCache.get(glbFile);
+    _attachGltf(cached.scene.clone(), cached.animations);
+    return;
+  }
+
+  const myLoadId = ++glbLoadId;
 
   new GLTFLoader().load(
     GLB_DIR + glbFile,
     (gltf) => {
-      if (myLoadId !== glbLoadId) return; // stale — a newer load already started
-
-      const model = gltf.scene;
-      model.userData.isSign = true;
-      scene.add(model);
-
-      camera.position.set(0.019, 0.573, 3.365);
-      orbitCtrl.target.set(0, 0.5, 0);
-      orbitCtrl.update();
-
-      if (gltf.animations?.length) {
-        mixer = new THREE.AnimationMixer(model);
-        mixer.clipAction(gltf.animations[0]).setLoop(THREE.LoopRepeat, Infinity).play();
-        animPlaying = true;
-        const btn = document.getElementById('btnPlayAnim');
-        if (btn) { btn.textContent = '⏸ Animation: Bật'; btn.classList.add('on'); }
-      }
+      if (myLoadId !== glbLoadId) return;
+      document.getElementById('glbSpinner')?.remove();
+      glbCache.set(glbFile, gltf); // lưu vào cache
+      _attachGltf(gltf.scene, gltf.animations);
     },
     undefined,
     () => {
       if (myLoadId !== glbLoadId) return;
+      document.getElementById('glbSpinner')?.remove();
       const p = document.getElementById('noGlbPath');
       if (p) p.textContent = `glbs/${glbFile}`;
       noGlb?.classList.add('show');
@@ -1664,3 +1712,17 @@ renderSidebar();
 renderAlphabetCard();
 renderFeaturedCard();
 selectLesson(0, 0);
+
+// Load GRU trong nền — không block UI, chỉ cần sẵn khi bấm Luyện tập
+loadGRU('./models/gru.onnx').catch(e => console.warn('[GRU] Load failed', e));
+
+// Preload GLB bài đầu tiên sau 800ms — chờ MediaPipe khởi tạo xong trước
+// để tránh tranh WebGL context khi mở tab 3D lần đầu
+setTimeout(() => {
+  const firstWord = TOPICS[0].words[0];
+  if (firstWord?.glbFile && !glbCache.has(firstWord.glbFile)) {
+    new GLTFLoader().load(GLB_DIR + firstWord.glbFile, (gltf) => {
+      glbCache.set(firstWord.glbFile, gltf);
+    });
+  }
+}, 800);
