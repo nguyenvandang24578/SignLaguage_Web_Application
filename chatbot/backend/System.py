@@ -1,6 +1,7 @@
 import os
 import torch
-import google.generativeai as genai
+# import google.generativeai as genai
+from groq import Groq
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
 from typing import TypedDict
@@ -20,8 +21,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class Config:
-    GEMINI_API = os.getenv('GEMINI_API_KEY')
-    GEMINI_MODEL = 'gemini-2.5-flash'
+    # GEMINI_API = os.getenv('GEMINI_API_KEY')
+    # GEMINI_MODEL = 'gemini-2.0-flash'
+    GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+    GROQ_MODEL = os.getenv('GROQ_MODEL', 'openai/gpt-oss-20b')
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     EMBEDDING_MODEL_NAME = os.getenv('EMBEDDING_MODEL_NAME', 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
     MAX_OUTPUT_TOKENS = int(os.getenv('MAX_OUTPUT_TOKENS', '1024'))
@@ -44,33 +47,66 @@ def preload_embedding_model():
     logger.info('Embedding model is warm and ready.')
 
 
-class Gemini:
+# class Gemini:
+#     def __init__(self, config):
+#         self.config = config
+#         genai.configure(api_key=self.config.GEMINI_API)
+#         self.llm = genai.GenerativeModel(self.config.GEMINI_MODEL)
+#         
+#     def invoke(self, prompt: str, temperature: float = 0) -> str:
+#         max_retries = self.config.MAX_RETRIES
+#         last_error = None
+#         try:
+#             for attempt in range(1, max_retries + 1):
+#                 try:
+#                     response = self.llm.generate_content(
+#                         contents=prompt,
+#                         generation_config=genai.types.GenerationConfig(
+#                             temperature=temperature,
+#                             max_output_tokens=self.config.MAX_OUTPUT_TOKENS,
+#                         )
+#                     )
+#                     return response.text.strip()
+#                 except Exception as e:
+#                     last_error = e
+#                     logger.error(f'Gemini ERROR (attempt {attempt}/{max_retries}): {str(e)}')
+#             return ""
+#         except Exception as e:
+#             logger.error(f'Gemini ERROR: {str(e)}')
+#             return ""
+
+
+class GroqLLM:
     def __init__(self, config):
         self.config = config
-        genai.configure(api_key=self.config.GEMINI_API)
-        self.llm = genai.GenerativeModel(self.config.GEMINI_MODEL)
-        
+        self.client = Groq(api_key=self.config.GROQ_API_KEY)
+
     def invoke(self, prompt: str, temperature: float = 0) -> str:
         max_retries = self.config.MAX_RETRIES
         last_error = None
-        try:
-            for attempt in range(1, max_retries + 1):
-                try:
-                    response = self.llm.generate_content(
-                        contents=prompt,
-                        generation_config=genai.types.GenerationConfig(
-                            temperature=temperature,
-                            max_output_tokens=self.config.MAX_OUTPUT_TOKENS,
-                        )
-                    )
-                    return response.text.strip()
-                except Exception as e:
-                    last_error = e
-                    logger.error(f'Gemini ERROR (attempt {attempt}/{max_retries}): {str(e)}')
-            return ""
-        except Exception as e:
-            logger.error(f'Gemini ERROR: {str(e)}')
-            return ""
+        for attempt in range(1, max_retries + 1):
+            try:
+                stream = self.client.chat.completions.create(
+                    model=self.config.GROQ_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=temperature,
+                    max_completion_tokens=self.config.MAX_OUTPUT_TOKENS,
+                    top_p=1,
+                    reasoning_effort="medium",
+                    stream=True,
+                    stop=None,
+                )
+                chunks = []
+                for chunk in stream:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        chunks.append(delta)
+                return "".join(chunks).strip()
+            except Exception as e:
+                last_error = e
+                logger.error(f'Groq ERROR (attempt {attempt}/{max_retries}): {str(e)}')
+        logger.error(f'Groq ERROR: {str(last_error)}')
+        return ""
     
     
 def build_tools_list() -> str:
@@ -147,10 +183,10 @@ class AgentState(TypedDict):
 
 
 config = Config()
-gemini_model = Gemini(config)
+groq_model = GroqLLM(config)
 
 Tools.TOOLS_MAPPING_TO_FUNC["get_qa_retriever"] = (
-    lambda query, top_k=3: Tools.get_qa_retriever(query, top_k, llm_client=gemini_model)
+    lambda query, top_k=3: Tools.get_qa_retriever(query, top_k, llm_client=groq_model)
 )
     
 def _format_history(history: list, max_turns: int = 10) -> str:
@@ -217,14 +253,41 @@ QUAN TRỌNG:
 Hãy phản hồi ngay bây giờ theo đúng định dạng đã quy định:
 """
     
-    response = gemini_model.invoke(prompt=prompt)
+    response = groq_model.invoke(prompt=prompt)
+
+    # Fix: nếu Groq vẫn cố gọi tool dù đã có observations (lỗi tool_choice=none),
+    # kiểm tra xem tool/query này đã được thực thi chưa → force READY
+    if response and 'ACTION:' in response:
+        observations_list = state.get('tool_observations', [])
+        has_real_data = any(
+            obs for obs in observations_list
+            if 'RESULT:' in obs and 'Error' not in obs
+        )
+        if has_real_data:
+            # Trích tool name từ response để kiểm tra duplicate
+            proposed_tool = ''
+            for line in response.split('\n'):
+                if line.strip().startswith('ACTION:'):
+                    proposed_tool = line.split('ACTION:')[1].strip()
+                    break
+            already_used = any(f'TOOL: {proposed_tool}' in obs for obs in observations_list)
+            if already_used:
+                logger.warning(
+                    f'Groq cố gọi lại tool "{proposed_tool}" đã dùng (lỗi tool_choice). '
+                    f'Force READY để tránh hallucinate.'
+                )
+                response = (
+                    "THOUGHT: Đã có đủ thông tin từ công cụ đã chạy trước đó.\n"
+                    "READY: Sử dụng kết quả từ tool observations để trả lời câu hỏi của người dùng."
+                )
+
     state['last_agent_response'] = response
     state['num_steps'] = state.get('num_steps', 0) + 1
-    
+
     print(f'\n--- AGENT STEP {state["num_steps"]} ---')
     print(response)
     print('-'*50)
-    
+
     return state
 
 
@@ -298,8 +361,15 @@ def call_tool(state: AgentState) -> AgentState:
     
     
 def generate_answer(state: AgentState) -> AgentState:
-    observations = '\n\n'.join(state.get('tool_observations', []))
-    
+    observations_list = state.get('tool_observations', [])
+    observations = '\n\n'.join(observations_list)
+
+    # Guard: kiểm tra có dữ liệu thực sự không (có RESULT và không phải lỗi)
+    has_real_data = any(
+        obs for obs in observations_list
+        if 'RESULT:' in obs and 'Error' not in obs and 'not found' not in obs.lower()
+    )
+
     last_response = state.get('last_agent_response', '')
     ready_summary = ''
     if 'READY:' in last_response.upper():
@@ -307,8 +377,23 @@ def generate_answer(state: AgentState) -> AgentState:
 
     history_text = _format_history(state.get('conversation_history', []))
 
+    if not has_real_data and not ready_summary:
+        no_data_instruction = (
+            "Lưu ý: Không có dữ liệu nào được truy xuất thành công. "
+            "Hãy trả lời dựa trên kiến thức chung nhưng nói rõ với người dùng rằng "
+            "bạn không tìm thấy thông tin cụ thể từ nguồn dữ liệu. "
+            "KHÔNG bịa đặt số liệu, tên tổ chức hay chi tiết cụ thể."
+        )
+    else:
+        no_data_instruction = (
+            "Chỉ sử dụng thông tin trong DỮ LIỆU ĐÃ THU THẬP bên dưới. "
+            "KHÔNG thêm thông tin không có trong dữ liệu."
+        )
+
     prompt = f"""
 {ANSWER_INSTRUCTION}
+
+{no_data_instruction}
 
 LỊCH SỬ HỘI THOẠI (các lượt trước để tham khảo ngữ cảnh):
 {history_text}
@@ -317,14 +402,14 @@ CÂU HỎI HIỆN TẠI CỦA NGƯỜI DÙNG:
 {state.get('query')}
 
 DỮ LIỆU ĐÃ THU THẬP:
-{observations}
+{observations if observations else "Không có dữ liệu nào được thu thập."}
 
 TÓM TẮT KẾT QUẢ:
 {ready_summary}
 
 Hãy viết câu trả lời cuối cùng:
 """
-    answer = gemini_model.invoke(prompt=prompt, temperature=0.7)
+    answer = groq_model.invoke(prompt=prompt, temperature=0.7)
     state['final_answer'] = answer
 
     print(f'\n--- FINAL ANSWER (temp=0.7) ---')
@@ -336,10 +421,22 @@ Hãy viết câu trả lời cuối cùng:
 
 def should_continue(state: AgentState) -> str:
     response = state.get("last_agent_response", "").upper()
+    num_steps = state.get("num_steps", 0)
+    has_observations = bool(state.get("tool_observations"))
+
+    # Nếu response rỗng (Groq lỗi / rate limit)
     if not response.strip():
-        print("Routing to GENERATE_ANSWER (empty response)")
+        # Đã có tool results → generate_answer để tránh hallucinate
+        if has_observations:
+            print("Routing to GENERATE_ANSWER (empty response but has observations)")
+            return "answer"
+        # Chưa có gì, thử lại nếu còn bước
+        if num_steps < 3:
+            print("Routing to AGENT retry (empty response, no observations yet)")
+            return "retry"
+        print("Routing to GENERATE_ANSWER (empty response, max steps)")
         return "answer"
-    
+
     if "READY:" in response:
         print("Routing to GENERATE_ANSWER (found READY)")
         return "answer"
@@ -347,11 +444,11 @@ def should_continue(state: AgentState) -> str:
     if "ACTION:" in response:
         print("Routing to TOOLS (found ACTION)")
         return "continue"
-    
-    if state.get("num_steps", 0) >= 3:
-        print("Routing to END (max steps reached)")
+
+    if num_steps >= 3:
+        print("Routing to GENERATE_ANSWER (max steps reached)")
         return "answer"
-    
+
     print("Routing to AGENT (incomplete response, retrying)")
     return "retry"
 
