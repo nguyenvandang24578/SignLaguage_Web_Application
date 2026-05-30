@@ -273,16 +273,24 @@ function renderSidebar() {
   /* ── Topic list ── */
   topicNav.innerHTML = '';
   TOPICS.forEach((t, i) => {
-    if (t.id === 'bang-chu-cai') return; // Shown separately as hero card
+    const isAlpha = t.id === 'bang-chu-cai';
+
+    // Insert visual separator before the alphabet pill
+    if (isAlpha) {
+      const sep = document.createElement('div');
+      sep.className = 'topic-nav-sep';
+      topicNav.appendChild(sep);
+    }
+
     const item = document.createElement('div');
-    item.className   = `topic-nav-item${i === 0 ? ' active' : ''}`;
+    item.className   = `topic-nav-item${i === 0 ? ' active' : ''}${isAlpha ? ' alphabet-topic' : ''}`;
     item.role        = 'listitem';
     item.tabIndex    = 0;
     item.innerHTML   = `
       <div class="topic-nav-icon" style="background:${t.iconBg}">${t.icon}</div>
       <div class="topic-nav-info">
         <div class="topic-nav-name">${t.label}</div>
-        <div class="topic-nav-count">${t.words.length} bài học</div>
+        <div class="topic-nav-count">${isAlpha ? 'Nền tảng · ' + t.words.length + ' ký hiệu' : t.words.length + ' bài học'}</div>
       </div>`;
     item.onclick   = () => selectTopic(i);
     item.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') selectTopic(i); };
@@ -452,7 +460,7 @@ function renderFeaturedCard() {
 
   card.innerHTML = `
     <!-- INFO BAR -->
-    <div class="feat-info-bar">
+    <div class="feat-info-bar${t.id === 'bang-chu-cai' ? ' alphabet-accent' : ''}">
       <div>
         <div class="feat-badge">${t.level}</div>
         <div class="feat-title">${t.label}</div>
@@ -615,11 +623,11 @@ function selectLesson(tIdx, wIdx) {
   const desc = document.getElementById('viewerDesc');
   if (desc) desc.innerHTML = w.desc;
 
-  if (currentViewTab === 'video') {
-    loadInlineVideo(w);
-  } else {
-    loadGlb(w.glbFile);
+  // Luôn reset về tab Video khi chuyển bài — tránh giữ nguyên tab 3D từ bài trước
+  if (currentViewTab !== 'video') {
+    window.switchViewTab('video');
   }
+  loadInlineVideo(w);
 
   // Preload GLB bài tiếp theo vào cache trong nền (silent, không block UI)
   const next = TOPICS[tIdx].words[wIdx + 1];
@@ -1709,7 +1717,6 @@ window.addEventListener('pagehide', safeStopCamera);
    BOOT
    ═══════════════════════════════════════════════════════════════════════════ */
 renderSidebar();
-renderAlphabetCard();
 renderFeaturedCard();
 selectLesson(0, 0);
 
