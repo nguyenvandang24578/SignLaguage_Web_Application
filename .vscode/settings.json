@@ -1,3 +1,8 @@
 {
-  "liveServer.settings.ignoreFiles": ["**/*.db", "**/data/**", "**/backend/data/**"]
+  "liveServer.settings.ignoreFiles": [
+    "**/*.db",
+    "**/data/**",
+    "**/backend/data/**"
+  ],
+  "liveServer.settings.port": 5501
 }
