@@ -69,8 +69,13 @@ async def chat_endpoint(req: ChatRequest):
             graph=app.state.graph,
             conversation_history=conversation_history
         )
-        
-        # 4. Lưu lại lịch sử
+
+        # Nếu model trả rỗng (hết quota), dùng thông báo chuẩn
+        QUOTA_MSG = "⚠️ Xin lỗi, hệ thống AI tạm thời không khả dụng (hết quota). Vui lòng thử lại sau."
+        if not response_text or not response_text.strip():
+            response_text = QUOTA_MSG
+
+        # 4. Lưu lại lịch sử (lưu đúng nội dung trả về, kể cả thông báo quota)
         ChatHistory.append_messages(session, req.message, response_text)
         
         return ChatResponse(response=response_text, session_id=session_id)

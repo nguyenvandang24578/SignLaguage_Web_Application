@@ -1,7 +1,6 @@
 import os
 import torch
-# import google.generativeai as genai
-from groq import Groq
+from openai import OpenAI
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
 from typing import TypedDict
@@ -21,10 +20,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class Config:
-    # GEMINI_API = os.getenv('GEMINI_API_KEY')
-    # GEMINI_MODEL = 'gemini-2.0-flash'
-    GROQ_API_KEY = os.getenv('GROQ_API_KEY')
-    GROQ_MODEL = os.getenv('GROQ_MODEL', 'openai/gpt-oss-20b')
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://api.vilao.ai/v1')
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'ts/gpt-5.4-mini')
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     EMBEDDING_MODEL_NAME = os.getenv('EMBEDDING_MODEL_NAME', 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
     MAX_OUTPUT_TOKENS = int(os.getenv('MAX_OUTPUT_TOKENS', '1024'))
@@ -47,66 +45,34 @@ def preload_embedding_model():
     logger.info('Embedding model is warm and ready.')
 
 
-# class Gemini:
-#     def __init__(self, config):
-#         self.config = config
-#         genai.configure(api_key=self.config.GEMINI_API)
-#         self.llm = genai.GenerativeModel(self.config.GEMINI_MODEL)
-#         
-#     def invoke(self, prompt: str, temperature: float = 0) -> str:
-#         max_retries = self.config.MAX_RETRIES
-#         last_error = None
-#         try:
-#             for attempt in range(1, max_retries + 1):
-#                 try:
-#                     response = self.llm.generate_content(
-#                         contents=prompt,
-#                         generation_config=genai.types.GenerationConfig(
-#                             temperature=temperature,
-#                             max_output_tokens=self.config.MAX_OUTPUT_TOKENS,
-#                         )
-#                     )
-#                     return response.text.strip()
-#                 except Exception as e:
-#                     last_error = e
-#                     logger.error(f'Gemini ERROR (attempt {attempt}/{max_retries}): {str(e)}')
-#             return ""
-#         except Exception as e:
-#             logger.error(f'Gemini ERROR: {str(e)}')
-#             return ""
-
-
-class GroqLLM:
+class OpenAIClient:
     def __init__(self, config):
         self.config = config
-        self.client = Groq(api_key=self.config.GROQ_API_KEY)
-
+        self.client = OpenAI(
+            api_key=self.config.OPENAI_API_KEY,
+            base_url=self.config.OPENAI_BASE_URL,
+        )
+        
     def invoke(self, prompt: str, temperature: float = 0) -> str:
         max_retries = self.config.MAX_RETRIES
         last_error = None
-        for attempt in range(1, max_retries + 1):
-            try:
-                stream = self.client.chat.completions.create(
-                    model=self.config.GROQ_MODEL,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=temperature,
-                    max_completion_tokens=self.config.MAX_OUTPUT_TOKENS,
-                    top_p=1,
-                    reasoning_effort="medium",
-                    stream=True,
-                    stop=None,
-                )
-                chunks = []
-                for chunk in stream:
-                    delta = chunk.choices[0].delta.content
-                    if delta:
-                        chunks.append(delta)
-                return "".join(chunks).strip()
-            except Exception as e:
-                last_error = e
-                logger.error(f'Groq ERROR (attempt {attempt}/{max_retries}): {str(e)}')
-        logger.error(f'Groq ERROR: {str(last_error)}')
-        return ""
+        try:
+            for attempt in range(1, max_retries + 1):
+                try:
+                    response = self.client.chat.completions.create(
+                        model=self.config.OPENAI_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=temperature,
+                        max_tokens=self.config.MAX_OUTPUT_TOKENS,
+                    )
+                    return (response.choices[0].message.content or "").strip()
+                except Exception as e:
+                    last_error = e
+                    logger.error(f'OpenAI ERROR (attempt {attempt}/{max_retries}): {str(e)}')
+            return ""
+        except Exception as e:
+            logger.error(f'OpenAI ERROR: {str(e)}')
+            return ""
     
     
 def build_tools_list() -> str:
@@ -183,10 +149,10 @@ class AgentState(TypedDict):
 
 
 config = Config()
-groq_model = GroqLLM(config)
+openai_model = OpenAIClient(config)
 
 Tools.TOOLS_MAPPING_TO_FUNC["get_qa_retriever"] = (
-    lambda query, top_k=3: Tools.get_qa_retriever(query, top_k, llm_client=groq_model)
+    lambda query, top_k=3: Tools.get_qa_retriever(query, top_k, llm_client=openai_model)
 )
     
 def _format_history(history: list, max_turns: int = 10) -> str:
@@ -253,7 +219,7 @@ QUAN TRỌNG:
 Hãy phản hồi ngay bây giờ theo đúng định dạng đã quy định:
 """
     
-    response = groq_model.invoke(prompt=prompt)
+    response = openai_model.invoke(prompt=prompt)
 
     # Fix: nếu Groq vẫn cố gọi tool dù đã có observations (lỗi tool_choice=none),
     # kiểm tra xem tool/query này đã được thực thi chưa → force READY
@@ -409,7 +375,7 @@ TÓM TẮT KẾT QUẢ:
 
 Hãy viết câu trả lời cuối cùng:
 """
-    answer = groq_model.invoke(prompt=prompt, temperature=0.7)
+    answer = openai_model.invoke(prompt=prompt, temperature=0.7)
     state['final_answer'] = answer
 
     print(f'\n--- FINAL ANSWER (temp=0.7) ---')

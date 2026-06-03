@@ -38,7 +38,7 @@ class Config():
 class QA_Retriever:
     def __init__(self, config: Config, llm_client=None):
         self.config = config
-        self.llm = llm_client # Nhận instance Gemini từ System.py
+        self.llm = llm_client # Nhận instance OpenAI từ System.py
         self.qdrant_client = QdrantClient(
             url=config.QDRANT_URL, 
             api_key=config.QDRANT_API_KEY

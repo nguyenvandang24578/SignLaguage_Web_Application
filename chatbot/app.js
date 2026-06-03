@@ -120,7 +120,7 @@ function closeModal() {
   pendingSrc = null;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function hideWelcome() {
   const w = document.getElementById("welcome");
   if (w) w.remove();
@@ -143,7 +143,7 @@ function makeAvatar(role) {
   return wrap;
 }
 
-// ── Render messages ──────────────────────────────────────────────────────────
+// ── Render messages ───────────────────────────────────────────────────────────
 function appendMessage(role, text) {
   hideWelcome();
 
@@ -204,7 +204,7 @@ function removeLoading() {
   if (el) el.remove();
 }
 
-// ── Session sidebar ──────────────────────────────────────────────────────────
+// ── Session sidebar ───────────────────────────────────────────────────────────
 async function loadSessionList() {
   try {
     const res = await fetch(`${API}/history`);
@@ -217,35 +217,73 @@ async function loadSessionList() {
 }
 
 function renderSessionList(sessions) {
+  // Lấy danh sách session_id hiện tại trên DOM
+  const existingItems = new Map();
+  sessionList.querySelectorAll(".sess-item[data-sid]").forEach((el) => {
+    existingItems.set(el.dataset.sid, el);
+  });
+
   if (!sessions.length) {
     sessionList.innerHTML =
       '<div class="sidebar-empty">No conversations yet</div>';
     return;
   }
-  sessionList.innerHTML = "";
-  sessions.forEach((s) => {
-    const item = document.createElement("div");
-    item.className =
-      "sess-item" + (s.session_id === currentSessionId ? " active" : "");
 
-    const btn = document.createElement("button");
-    btn.className = "sess-btn";
-    btn.textContent = s.title || s.session_id;
-    btn.title = `${s.turn_count} lượt · ${s.updated_at}`;
-    btn.addEventListener("click", () => loadSession(s.session_id));
+  // Xóa empty placeholder nếu có
+  const empty = sessionList.querySelector(".sidebar-empty");
+  if (empty) empty.remove();
 
-    const delBtn = document.createElement("button");
-    delBtn.className = "sess-del-btn";
-    delBtn.title = "Xoá cuộc trò chuyện này";
-    delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
-    delBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      confirmDelete(s.session_id, s.title || s.session_id);
-    });
+  const newIds = new Set(sessions.map((s) => s.session_id));
 
-    item.appendChild(btn);
-    item.appendChild(delBtn);
-    sessionList.appendChild(item);
+  // Xóa các item không còn tồn tại
+  existingItems.forEach((el, sid) => {
+    if (!newIds.has(sid)) el.remove();
+  });
+
+  // Update hoặc tạo mới từng item — KHÔNG xóa toàn bộ innerHTML
+  sessions.forEach((s, index) => {
+    let item = existingItems.get(s.session_id);
+
+    if (item) {
+      // Update item đã có: chỉ update text và class, không tạo lại listener
+      item.className =
+        "sess-item" + (s.session_id === currentSessionId ? " active" : "");
+      const btn = item.querySelector(".sess-btn");
+      if (btn) {
+        btn.textContent = s.title || s.session_id;
+        btn.title = `${s.turn_count} lượt · ${s.updated_at}`;
+      }
+    } else {
+      // Tạo item mới
+      item = document.createElement("div");
+      item.className =
+        "sess-item" + (s.session_id === currentSessionId ? " active" : "");
+      item.dataset.sid = s.session_id;
+
+      const btn = document.createElement("button");
+      btn.className = "sess-btn";
+      btn.textContent = s.title || s.session_id;
+      btn.title = `${s.turn_count} lượt · ${s.updated_at}`;
+      btn.addEventListener("click", () => loadSession(s.session_id));
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "sess-del-btn";
+      delBtn.title = "Xoá cuộc trò chuyện này";
+      delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
+      delBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        confirmDelete(s.session_id, s.title || s.session_id);
+      });
+
+      item.appendChild(btn);
+      item.appendChild(delBtn);
+      sessionList.appendChild(item);
+    }
+
+    // Đảm bảo thứ tự đúng
+    if (sessionList.children[index] !== item) {
+      sessionList.insertBefore(item, sessionList.children[index] || null);
+    }
   });
 }
 
@@ -255,13 +293,21 @@ function confirmDelete(sessionId, title) {
     `Xoá "${title.length > 30 ? title.slice(0, 30) + "…" : title}"?`;
   modal.classList.add("open");
 
-  document.getElementById("btn-confirm-yes").onclick = async () => {
+  // Clone để xóa sạch listener cũ, tránh fire nhiều lần
+  const yesBtn = document.getElementById("btn-confirm-yes");
+  const noBtn = document.getElementById("btn-confirm-no");
+  const newYes = yesBtn.cloneNode(true);
+  const newNo = noBtn.cloneNode(true);
+  yesBtn.replaceWith(newYes);
+  noBtn.replaceWith(newNo);
+
+  newYes.addEventListener("click", async () => {
     modal.classList.remove("open");
     await deleteSession(sessionId);
-  };
-  document.getElementById("btn-confirm-no").onclick = () => {
+  });
+  newNo.addEventListener("click", () => {
     modal.classList.remove("open");
-  };
+  });
 }
 
 async function deleteSession(sessionId) {
@@ -270,7 +316,8 @@ async function deleteSession(sessionId) {
       method: "DELETE",
     });
     if (!res.ok) throw new Error();
-    if (currentSessionId === sessionId) {
+    // Chỉ reset màn hình nếu đúng session đang xem bị xóa
+    if (currentSessionId && currentSessionId === sessionId) {
       currentSessionId = null;
       showWelcome();
     }
@@ -282,6 +329,11 @@ async function deleteSession(sessionId) {
 }
 
 async function loadSession(sessionId) {
+  console.log("loadSession called:", sessionId, "current:", currentSessionId);
+  console.trace();
+  // FIX: Không load lại nếu đang xem đúng session đó
+  if (sessionId === currentSessionId) return;
+
   try {
     const res = await fetch(`${API}/history/${sessionId}`);
     if (!res.ok) throw new Error();
@@ -303,6 +355,7 @@ async function loadSession(sessionId) {
 }
 
 function showWelcome() {
+  console.trace("⚠️ showWelcome called — stack:");
   messagesEl.innerHTML = `
     <div class="welcome" id="welcome">
       <h2>VNSignMate Assistant</h2>
@@ -325,6 +378,7 @@ async function sendMessage() {
   promptEl.style.height = "auto";
   appendMessage("user", text);
 
+  const currentSessionIdBefore = currentSessionId;
   isLoading = true;
   sendBtn.disabled = true;
   appendLoadingDots();
@@ -344,8 +398,13 @@ async function sendMessage() {
 
     removeLoading();
     if (!currentSessionId) currentSessionId = data.session_id;
+
     appendMessage("assistant", data.response);
-    await loadSessionList();
+
+    // Chỉ reload sidebar nếu đây là tin nhắn đầu tiên (session mới có title)
+    // Tránh re-render sidebar không cần thiết gây văng màn hình
+    const isFirstMessage = !currentSessionIdBefore;
+    if (isFirstMessage) await loadSessionList();
   } catch (_) {
     removeLoading();
     showToast("Lỗi kết nối. Kiểm tra FastAPI đang chạy tại port 8000.");

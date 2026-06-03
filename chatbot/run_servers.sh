@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 AI_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 LLAMA_BIN="$AI_ROOT/llama.cpp/build/bin/llama-server"
-MODEL_PATH="$AI_ROOT/models/qwen3-4b-instruct-2507.Q4_K_M.gguf"
+MODEL_PATH="$AI_ROOT/models/qwen3-1.7b.Q8_0.gguf"
 
 LLAMA_CTX_SIZE="128"
 LLAMA_THREADS="8"
