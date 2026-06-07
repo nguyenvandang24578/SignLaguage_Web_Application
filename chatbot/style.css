@@ -344,6 +344,25 @@ body {
   white-space: pre-wrap;
 }
 
+.msg-indicator {
+  padding-top: 4px;
+}
+
+.msg-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-bottom: 6px;
+}
+
 /* Bubble cho user */
 .msg-row.user-row .msg-text {
   background: linear-gradient(135deg, #ddeaf7 0%, var(--blue-light) 100%);

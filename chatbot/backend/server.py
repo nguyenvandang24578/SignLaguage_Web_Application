@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import System
 import ChatHistory
 import logging
@@ -41,6 +41,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     session_id: str
+    tools_used: list[str] = Field(default_factory=list)
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_endpoint(req: ChatRequest):
@@ -64,11 +65,13 @@ async def chat_endpoint(req: ChatRequest):
     try:
         # 3. Chạy qua Agent (LangGraph)
         logger.info(f"Đang xử lý câu hỏi: {req.message} (Session: {session_id})")
-        response_text = System.run_query(
+        result = System.run_query(
             query=req.message,
             graph=app.state.graph,
             conversation_history=conversation_history
         )
+        response_text = result.get("answer", "")
+        tools_used = result.get("tools_used", [])
 
         # Nếu model trả rỗng (hết quota), dùng thông báo chuẩn
         QUOTA_MSG = "⚠️ Xin lỗi, hệ thống AI tạm thời không khả dụng (hết quota). Vui lòng thử lại sau."
@@ -78,7 +81,11 @@ async def chat_endpoint(req: ChatRequest):
         # 4. Lưu lại lịch sử (lưu đúng nội dung trả về, kể cả thông báo quota)
         ChatHistory.append_messages(session, req.message, response_text)
         
-        return ChatResponse(response=response_text, session_id=session_id)
+        return ChatResponse(
+            response=response_text,
+            session_id=session_id,
+            tools_used=tools_used,
+        )
         
     except Exception as e:
         logger.error(f"Lỗi khi xử lý chat: {str(e)}")

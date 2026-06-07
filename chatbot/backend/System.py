@@ -98,12 +98,12 @@ QUY TẮC QUAN TRỌNG:
 QUY TRÌNH:
 Bước 1: Đọc kỹ PAST TOOL OBSERVATIONS
 Bước 2: Phân loại câu hỏi:
-   - Nếu liên quan VSL (ngôn ngữ ký hiệu), tài liệu VSL, hoặc cần tái cấu trúc theo VSL →
-     ưu tiên get_qa_retriever; nếu cần tái cấu trúc cụ thể thì dùng vsl_restruct
-   - Các chủ đề còn lại (không liên quan VSL) → dùng get_web_search
+   - Nếu liên quan VSL (ngôn ngữ ký hiệu), tài liệu VSL → ưu tiên get_qa_retriever; 
+   - Nếu cần tái cấu trúc cụ thể thì dùng vsl_restruct
+   - Các chủ đề còn lại (không liên quan VSL)N hoặc thông tin VSL bị thiếu trong ngữ cảnh khi gọi get_qa_retrive → dùng get_web_search
    - Nếu đã đủ thông tin → Viết READY
 
-ĐỊNH DẠNG ĐẦU RA (BẮT BUỘC):
+ĐỊNH DẠNG ĐẦU RA (BẮT BUỘC):retrive
 
 Nếu đã đủ thông tin:
 THOUGHT: Giải thích ngắn gọn vì sao có thể trả lời dựa trên dữ liệu đã có
@@ -444,7 +444,18 @@ def build_graph():
     return workflow.compile()
 
 
-def run_query(query: str, graph, conversation_history: list = None) -> str:
+def _extract_tools_used(observations: list) -> list:
+    tools_used = []
+    for obs in observations or []:
+        if not obs.startswith('TOOL:'):
+            continue
+        tool_name = obs.split('TOOL:')[1].split('\n')[0].strip()
+        if tool_name and tool_name not in tools_used:
+            tools_used.append(tool_name)
+    return tools_used
+
+
+def run_query(query: str, graph, conversation_history: list = None) -> dict:
     state = {
         "query": query,
         "last_agent_response": "",
@@ -455,7 +466,12 @@ def run_query(query: str, graph, conversation_history: list = None) -> str:
     }
     
     result = graph.invoke(state)
-    return result.get('final_answer') or result.get('last_agent_response', '')
+    tools_used = _extract_tools_used(result.get('tool_observations', []))
+    answer = result.get('final_answer') or result.get('last_agent_response', '')
+    return {
+        "answer": answer,
+        "tools_used": tools_used,
+    }
 
     
 def main():
@@ -499,11 +515,12 @@ def main():
             continue
 
         try:
-            response = run_query(
+            result = run_query(
                 query=query,
                 graph=graph,
                 conversation_history=conversation_history,
             )
+            response = result.get("answer", "")
             print(f'\nBot: {response}')
             print('---' * 20 + '\n')
 

@@ -171,7 +171,7 @@ function appendMessage(role, text) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function appendLoadingDots() {
+function appendLoadingIndicator() {
   hideWelcome();
 
   const row = document.createElement("div");
@@ -187,12 +187,13 @@ function appendLoadingDots() {
   sender.className = "msg-sender";
   sender.textContent = "Bot";
 
-  const dots = document.createElement("div");
-  dots.className = "dot-anim";
-  dots.innerHTML = "<span></span><span></span><span></span>";
+  const indicator = document.createElement("div");
+  indicator.className = "msg-indicator";
+  indicator.innerHTML =
+    '<div class="dot-anim"><span></span><span></span><span></span></div>';
 
   content.appendChild(sender);
-  content.appendChild(dots);
+  content.appendChild(indicator);
   row.appendChild(avatar);
   row.appendChild(content);
   messagesEl.appendChild(row);
@@ -202,6 +203,37 @@ function appendLoadingDots() {
 function removeLoading() {
   const el = document.getElementById("loading-row");
   if (el) el.remove();
+}
+
+function replaceLoadingWithMessage(text, toolsUsed = []) {
+  const row = document.getElementById("loading-row");
+  if (!row) {
+    appendMessage("assistant", text);
+    return;
+  }
+
+  row.removeAttribute("id");
+  const content = row.querySelector(".msg-content");
+  if (!content) {
+    appendMessage("assistant", text);
+    return;
+  }
+
+  const indicator = content.querySelector(".msg-indicator");
+  if (indicator) indicator.remove();
+
+  if (Array.isArray(toolsUsed) && toolsUsed.length > 0) {
+    const tools = document.createElement("div");
+    tools.className = "msg-tools";
+    tools.textContent = `Tool: ${toolsUsed.join(", ")}`;
+    content.appendChild(tools);
+  }
+
+  const msgText = document.createElement("div");
+  msgText.className = "msg-text";
+  msgText.textContent = text;
+  content.appendChild(msgText);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 // ── Session sidebar ───────────────────────────────────────────────────────────
@@ -381,7 +413,7 @@ async function sendMessage() {
   const currentSessionIdBefore = currentSessionId;
   isLoading = true;
   sendBtn.disabled = true;
-  appendLoadingDots();
+  appendLoadingIndicator();
 
   try {
     const res = await fetch(`${API}/chat`, {
@@ -396,10 +428,10 @@ async function sendMessage() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    removeLoading();
+    const toolsUsed = Array.isArray(data.tools_used) ? data.tools_used : [];
     if (!currentSessionId) currentSessionId = data.session_id;
 
-    appendMessage("assistant", data.response);
+    replaceLoadingWithMessage(data.response, toolsUsed);
 
     // Chỉ reload sidebar nếu đây là tin nhắn đầu tiên (session mới có title)
     // Tránh re-render sidebar không cần thiết gây văng màn hình
