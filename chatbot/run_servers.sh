@@ -43,7 +43,7 @@ echo "Starting llama-server on port $LLAMA_PORT..."
 LLAMA_PID=$!
 
 echo "Starting FastAPI backend on port $BACKEND_PORT..."
-python "$ROOT_DIR/backend/server.py" &
+conda run -n thesis python "$ROOT_DIR/backend/server.py" &
 BACKEND_PID=$!
 
 wait "$LLAMA_PID" "$BACKEND_PID"

@@ -2,42 +2,15 @@ const API = "http://localhost:8000/api";
 
 let currentSessionId = null;
 let isLoading = false;
-
-const DEFAULT_USER_IMG = "account.png";
-const DEFAULT_BOT_IMG = "robot.png";
-
-const avatarState = {
-  user: { src: DEFAULT_USER_IMG },
-  bot: { src: DEFAULT_BOT_IMG },
-};
-
-(function loadSavedAvatars() {
-  try {
-    const saved = localStorage.getItem("chatbot_avatars_v2");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.user?.src) avatarState.user.src = parsed.user.src;
-      if (parsed.bot?.src) avatarState.bot.src = parsed.bot.src;
-    }
-  } catch (_) {}
-})();
-
-function saveAvatars() {
-  try {
-    localStorage.setItem("chatbot_avatars_v2", JSON.stringify(avatarState));
-  } catch (_) {}
-}
+let currentTaskId = null;
+let pollingInterval = null;
 
 const messagesEl = document.getElementById("messages");
 const promptEl = document.getElementById("prompt");
 const sendBtn = document.getElementById("send-btn");
+const cancelBtn = document.getElementById("cancel-btn");
 const sessionList = document.getElementById("session-list");
 const toastEl = document.getElementById("toast");
-
-const modalOverlay = document.getElementById("avatar-modal-overlay");
-const modalTitle = document.getElementById("avatar-modal-title");
-const previewImg = document.getElementById("avatar-preview-img");
-const fileInput = document.getElementById("avatar-file-input");
 
 function showToast(msg) {
   toastEl.textContent = msg;
@@ -58,67 +31,7 @@ promptEl.addEventListener("keydown", (e) => {
 });
 
 sendBtn.addEventListener("click", sendMessage);
-
-let editingRole = null;
-let pendingSrc = null;
-
-function openAvatarModal(role) {
-  editingRole = role;
-  pendingSrc = avatarState[role].src;
-  modalTitle.textContent =
-    role === "user" ? "Đổi ảnh người dùng" : "Đổi ảnh bot";
-  previewImg.src = pendingSrc;
-  modalOverlay.classList.add("open");
-}
-
-document.getElementById("btn-pick-file").addEventListener("click", () => {
-  fileInput.value = "";
-  fileInput.click();
-});
-
-fileInput.addEventListener("change", () => {
-  const file = fileInput.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    pendingSrc = e.target.result;
-    previewImg.src = pendingSrc;
-  };
-  reader.readAsDataURL(file);
-});
-
-document.getElementById("btn-reset-avatar").addEventListener("click", () => {
-  pendingSrc = editingRole === "user" ? DEFAULT_USER_IMG : DEFAULT_BOT_IMG;
-  previewImg.src = pendingSrc;
-});
-
-document
-  .getElementById("btn-modal-cancel")
-  .addEventListener("click", closeModal);
-
-modalOverlay.addEventListener("click", (e) => {
-  if (e.target === modalOverlay) closeModal();
-});
-
-document.getElementById("btn-modal-save").addEventListener("click", () => {
-  if (!editingRole) return;
-  avatarState[editingRole].src = pendingSrc;
-  saveAvatars();
-
-  document
-    .querySelectorAll(`.msg-avatar[data-role="${editingRole}"] img`)
-    .forEach((img) => {
-      img.src = pendingSrc;
-    });
-
-  closeModal();
-});
-
-function closeModal() {
-  modalOverlay.classList.remove("open");
-  editingRole = null;
-  pendingSrc = null;
-}
+cancelBtn.addEventListener("click", cancelCurrentTask);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function hideWelcome() {
@@ -130,16 +43,12 @@ function makeAvatar(role) {
   const wrap = document.createElement("div");
   wrap.className = "msg-avatar";
   wrap.dataset.role = role === "user" ? "user" : "bot";
-  wrap.title = "Nhấn để đổi ảnh đại diện";
 
   const img = document.createElement("img");
-  img.src = avatarState[role === "user" ? "user" : "bot"].src;
+  img.src = role === "user" ? "account.png" : "robot.png";
   img.alt = role === "user" ? "User" : "Bot";
   wrap.appendChild(img);
 
-  wrap.addEventListener("click", () =>
-    openAvatarModal(role === "user" ? "user" : "bot"),
-  );
   return wrap;
 }
 
@@ -189,8 +98,9 @@ function appendLoadingIndicator() {
 
   const indicator = document.createElement("div");
   indicator.className = "msg-indicator";
-  indicator.innerHTML =
-    '<div class="dot-anim"><span></span><span></span><span></span></div>';
+  indicator.innerHTML = `
+    <div class="dot-anim"><span></span><span></span><span></span></div>
+  `;
 
   content.appendChild(sender);
   content.appendChild(indicator);
@@ -198,11 +108,25 @@ function appendLoadingIndicator() {
   row.appendChild(content);
   messagesEl.appendChild(row);
   messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  // Show cancel button in input area, hide send button
+  setLoadingState(true);
 }
 
 function removeLoading() {
   const el = document.getElementById("loading-row");
   if (el) el.remove();
+  setLoadingState(false);
+}
+
+function setLoadingState(isLoading) {
+  if (isLoading) {
+    sendBtn.style.display = "none";
+    cancelBtn.style.display = "flex";
+  } else {
+    sendBtn.style.display = "flex";
+    cancelBtn.style.display = "none";
+  }
 }
 
 function replaceLoadingWithMessage(text, toolsUsed = []) {
@@ -234,6 +158,7 @@ function replaceLoadingWithMessage(text, toolsUsed = []) {
   msgText.textContent = text;
   content.appendChild(msgText);
   messagesEl.scrollTop = messagesEl.scrollHeight;
+  setLoadingState(false);
 }
 
 // ── Session sidebar ───────────────────────────────────────────────────────────
@@ -366,6 +291,12 @@ async function loadSession(sessionId) {
   // FIX: Không load lại nếu đang xem đúng session đó
   if (sessionId === currentSessionId) return;
 
+  // Stop any ongoing polling when switching conversations
+  stopPolling();
+  isLoading = false;
+  sendBtn.disabled = false;
+  removeLoading();
+
   try {
     const res = await fetch(`${API}/history/${sessionId}`);
     if (!res.ok) throw new Error();
@@ -396,6 +327,12 @@ function showWelcome() {
 }
 
 document.getElementById("btn-new-chat").addEventListener("click", () => {
+  // Stop any ongoing polling when starting a new chat
+  stopPolling();
+  isLoading = false;
+  sendBtn.disabled = false;
+  removeLoading();
+
   currentSessionId = null;
   showWelcome();
   loadSessionList();
@@ -428,10 +365,12 @@ async function sendMessage() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    const toolsUsed = Array.isArray(data.tools_used) ? data.tools_used : [];
+    // Backend now returns task_id immediately
+    currentTaskId = data.task_id;
     if (!currentSessionId) currentSessionId = data.session_id;
 
-    replaceLoadingWithMessage(data.response, toolsUsed);
+    // Start polling for task completion
+    startPolling(currentTaskId);
 
     // Chỉ reload sidebar nếu đây là tin nhắn đầu tiên (session mới có title)
     // Tránh re-render sidebar không cần thiết gây văng màn hình
@@ -440,10 +379,119 @@ async function sendMessage() {
   } catch (_) {
     removeLoading();
     showToast("Lỗi kết nối. Kiểm tra FastAPI đang chạy tại port 8000.");
+    isLoading = false;
+    sendBtn.disabled = false;
+  }
+}
+
+function startPolling(taskId) {
+  // Clear any existing polling
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
   }
 
-  isLoading = false;
-  sendBtn.disabled = false;
+  pollingInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`${API}/chat/status/${taskId}`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          stopPolling();
+          removeLoading();
+          showToast("Task not found");
+          return;
+        }
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+
+      // Update loading indicator with progress
+      updateLoadingProgress(data.progress, data.current_step);
+
+      if (data.status === "completed") {
+        stopPolling();
+        const toolsUsed = Array.isArray(data.result?.tools_used) ? data.result.tools_used : [];
+        replaceLoadingWithMessage(data.result?.response || "", toolsUsed);
+        isLoading = false;
+        sendBtn.disabled = false;
+      } else if (data.status === "failed") {
+        stopPolling();
+        removeLoading();
+        showToast(`Lỗi: ${data.error || "Unknown error"}`);
+        isLoading = false;
+        sendBtn.disabled = false;
+      } else if (data.status === "cancelled") {
+        stopPolling();
+        const toolsUsed = Array.isArray(data.result?.tools_used) ? data.result.tools_used : [];
+        const response = data.result?.response || "";
+        const isPartial = data.result?.partial === true;
+        
+        if (response) {
+          // Show partial response with indicator
+          replaceLoadingWithMessage(response + (isPartial ? " ⚠️ (partial)" : ""), toolsUsed);
+        } else {
+          removeLoading();
+        }
+        showToast(isPartial ? "Generation cancelled - partial response saved" : "Generation cancelled");
+        isLoading = false;
+        sendBtn.disabled = false;
+      }
+    } catch (err) {
+      console.error("Polling error:", err);
+      // Don't stop polling on network errors, retry
+    }
+  }, 500); // Poll every 500ms
+}
+
+function stopPolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+  }
+  currentTaskId = null;
+}
+
+async function cancelCurrentTask() {
+  if (!currentTaskId) return;
+  
+  try {
+    const res = await fetch(`${API}/chat/cancel/${currentTaskId}`, {
+      method: "POST",
+    });
+    
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    
+    // The polling will pick up the cancelled status
+    showToast("Generation cancelled");
+  } catch (err) {
+    console.error("Cancel error:", err);
+    showToast("Failed to cancel");
+  }
+}
+
+// Handle Escape key to cancel generation
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && isLoading && currentTaskId) {
+    cancelCurrentTask();
+  }
+});
+
+function updateLoadingProgress(progress, step) {
+  const row = document.getElementById("loading-row");
+  if (!row) return;
+
+  const indicator = row.querySelector(".msg-indicator");
+  if (indicator) {
+    // Update the progress text while preserving the cancel button
+    let progressEl = indicator.querySelector(".loading-progress");
+    if (!progressEl) {
+      progressEl = document.createElement("div");
+      progressEl.className = "loading-progress";
+      indicator.appendChild(progressEl);
+    }
+    progressEl.textContent = `${Math.round(progress * 100)}% - ${step}`;
+  }
 }
 
 loadSessionList();
