@@ -1,2 +1,13 @@
 "__pycache__/" 
 "*.pyc" 
+
+.opencode/
+opencode.json
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Chatbot data
+chatbot/backend/data/chat.db

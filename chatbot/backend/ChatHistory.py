@@ -1,35 +1,56 @@
-import sqlite3
+import aiosqlite
 import json
 import uuid
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
+from contextlib import asynccontextmanager
 
 BACKEND_ROOT = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BACKEND_ROOT, "data", "chat.db")
 
-
-# ─── Internal ────────────────────────────────────────────────────────────────
-
-def _conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+# Connection pool
+_pool: Optional[aiosqlite.Connection] = None
+_pool_lock = None
 
 
-def _ensure_table():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    with _conn() as c:
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS sessions (
-                session_id  TEXT PRIMARY KEY,
-                title       TEXT    DEFAULT '(chưa có tin nhắn)',
-                turn_count  INTEGER DEFAULT 0,
-                messages    TEXT    DEFAULT '[]',
-                created_at  TEXT,
-                updated_at  TEXT
-            )
-        """)
+async def _get_pool() -> aiosqlite.Connection:
+    """Get or create a connection pool with WAL mode enabled."""
+    global _pool, _pool_lock
+    import asyncio
+    if _pool_lock is None:
+        _pool_lock = asyncio.Lock()
+    
+    async with _pool_lock:
+        if _pool is None:
+            os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+            _pool = await aiosqlite.connect(DB_PATH)
+            _pool.row_factory = aiosqlite.Row
+            # Enable WAL mode for better concurrency
+            await _pool.execute("PRAGMA journal_mode=WAL")
+            # Optimize for read-heavy workloads
+            await _pool.execute("PRAGMA synchronous=NORMAL")
+            await _pool.execute("PRAGMA cache_size=-32768")  # 32MB cache
+            await _pool.execute("PRAGMA temp_store=MEMORY")
+            await _pool.execute("PRAGMA mmap_size=268435456")  # 256MB mmap
+            await _pool.commit()
+        return _pool
+
+
+async def _ensure_table():
+    """Create sessions table if not exists."""
+    pool = await _get_pool()
+    await pool.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            session_id  TEXT PRIMARY KEY,
+            title       TEXT    DEFAULT '(chưa có tin nhắn)',
+            turn_count  INTEGER DEFAULT 0,
+            messages    TEXT    DEFAULT '[]',
+            created_at  TEXT,
+            updated_at  TEXT
+        )
+    """)
+    await pool.commit()
 
 
 def _now() -> str:
@@ -41,11 +62,17 @@ def _short_title(text: str, max_len: int = 50) -> str:
     return text if len(text) <= max_len else text[:max_len - 1] + "…"
 
 
+def _row_to_dict(row: aiosqlite.Row) -> dict:
+    d = dict(row)
+    d["messages"] = json.loads(d["messages"])
+    return d
+
+
 # ─── Core API ────────────────────────────────────────────────────────────────
 
-def create_session() -> dict:
+async def create_session() -> dict:
     """Tạo phiên mới, lưu vào SQLite, trả về session dict."""
-    _ensure_table()
+    await _ensure_table()
     now = _now()
     session = {
         "session_id": str(uuid.uuid4()),
@@ -55,48 +82,45 @@ def create_session() -> dict:
         "created_at": now,
         "updated_at": now,
     }
-    with _conn() as c:
-        c.execute("""
-            INSERT INTO sessions (session_id, title, turn_count, messages, created_at, updated_at)
-            VALUES (:session_id, :title, :turn_count, :messages, :created_at, :updated_at)
-        """, {**session, "messages": json.dumps([], ensure_ascii=False)})
+    pool = await _get_pool()
+    await pool.execute("""
+        INSERT INTO sessions (session_id, title, turn_count, messages, created_at, updated_at)
+        VALUES (:session_id, :title, :turn_count, :messages, :created_at, :updated_at)
+    """, {**session, "messages": json.dumps([], ensure_ascii=False)})
+    await pool.commit()
     return session
 
 
-def load_session(session_id: str) -> Optional[dict]:
+async def load_session(session_id: str) -> Optional[dict]:
     """Load phiên từ DB. Trả về None nếu không tìm thấy."""
-    _ensure_table()
-    with _conn() as c:
-        row = c.execute(
-            "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
-        ).fetchone()
+    await _ensure_table()
+    pool = await _get_pool()
+    async with pool.execute(
+        "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
     if not row:
         return None
     return _row_to_dict(row)
 
 
-def _save_session(session: dict):
+async def _save_session(session: dict):
     """Cập nhật session trong DB."""
     session["updated_at"] = _now()
-    with _conn() as c:
-        c.execute("""
-            UPDATE sessions
-            SET title = :title, turn_count = :turn_count,
-                messages = :messages, updated_at = :updated_at
-            WHERE session_id = :session_id
-        """, {
-            **session,
-            "messages": json.dumps(session["messages"], ensure_ascii=False)
-        })
+    pool = await _get_pool()
+    await pool.execute("""
+        UPDATE sessions
+        SET title = :title, turn_count = :turn_count,
+            messages = :messages, updated_at = :updated_at
+        WHERE session_id = :session_id
+    """, {
+        **session,
+        "messages": json.dumps(session["messages"], ensure_ascii=False)
+    })
+    await pool.commit()
 
 
-def _row_to_dict(row: sqlite3.Row) -> dict:
-    d = dict(row)
-    d["messages"] = json.loads(d["messages"])
-    return d
-
-
-def append_messages(session: dict, user_query: str, bot_response: str) -> dict:
+async def append_messages(session: dict, user_query: str, bot_response: str) -> dict:
     """Thêm cặp (user, assistant) vào session và lưu DB."""
     now = _now()
     session["messages"].append({"role": "user",      "content": user_query,   "timestamp": now})
@@ -107,7 +131,7 @@ def append_messages(session: dict, user_query: str, bot_response: str) -> dict:
     if session["turn_count"] == 1:
         session["title"] = _short_title(user_query)
 
-    _save_session(session)
+    await _save_session(session)
     return session
 
 
@@ -122,23 +146,56 @@ def get_history_list(messages: list, max_turns: int = 3) -> list:
 
 # ─── Session listing ──────────────────────────────────────────────────────────
 
-def list_sessions() -> list[dict]:
+async def list_sessions() -> list[dict]:
     """Danh sách tất cả phiên, mới nhất lên đầu."""
-    _ensure_table()
-    with _conn() as c:
-        rows = c.execute("""
-            SELECT session_id, title, turn_count, updated_at
-            FROM sessions
-            ORDER BY updated_at DESC
-        """).fetchall()
+    await _ensure_table()
+    pool = await _get_pool()
+    async with pool.execute("""
+        SELECT session_id, title, turn_count, updated_at
+        FROM sessions
+        ORDER BY updated_at DESC
+    """) as cursor:
+        rows = await cursor.fetchall()
     return [dict(r) for r in rows]
 
 
-def delete_session(session_id: str) -> bool:
+async def delete_session(session_id: str) -> bool:
     """Xoá phiên khỏi DB. Trả về True nếu thành công."""
-    _ensure_table()
-    with _conn() as c:
-        affected = c.execute(
-            "DELETE FROM sessions WHERE session_id = ?", (session_id,)
-        ).rowcount
-    return affected > 0
+    await _ensure_table()
+    pool = await _get_pool()
+    cursor = await pool.execute(
+        "DELETE FROM sessions WHERE session_id = ?", (session_id,)
+    )
+    await pool.commit()
+    return cursor.rowcount > 0
+
+
+async def select_or_create_session() -> dict:
+    """Lấy phiên mới nhất hoặc tạo mới nếu không có."""
+    sessions = await list_sessions()
+    if sessions:
+        return await load_session(sessions[0]["session_id"])
+    return await create_session()
+
+
+# ─── Sync wrappers for backward compatibility ────────────────────────────────
+
+import asyncio
+
+def create_session_sync() -> dict:
+    return asyncio.run(create_session())
+
+def load_session_sync(session_id: str) -> Optional[dict]:
+    return asyncio.run(load_session(session_id))
+
+def append_messages_sync(session: dict, user_query: str, bot_response: str) -> dict:
+    return asyncio.run(append_messages(session, user_query, bot_response))
+
+def list_sessions_sync() -> list[dict]:
+    return asyncio.run(list_sessions())
+
+def delete_session_sync(session_id: str) -> bool:
+    return asyncio.run(delete_session(session_id))
+
+def select_or_create_session_sync() -> dict:
+    return asyncio.run(select_or_create_session())

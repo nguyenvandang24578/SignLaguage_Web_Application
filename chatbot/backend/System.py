@@ -1,5 +1,6 @@
 import os
 import torch
+import asyncio
 from openai import OpenAI
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
@@ -257,7 +258,7 @@ Hãy phản hồi ngay bây giờ theo đúng định dạng đã quy định:
     return state
 
 
-def call_tool(state: AgentState) -> AgentState:
+async def call_tool(state: AgentState) -> AgentState:
     action_text = state.get('last_agent_response', '')
     
     if 'ACTION:' not in action_text:
@@ -283,14 +284,14 @@ def call_tool(state: AgentState) -> AgentState:
                 arguments = json.loads(args_str)
                 break
         
-        tool_func = Tools.TOOLS_MAPPING_TO_FUNC.get(tool_name)
+        tool_func = Tools.TOOLS_MAPPING_TO_FUNC_ASYNC.get(tool_name)
         
         if not tool_func:
             state.setdefault('tool_observations', []).append(f'Tool {tool_name} not found')
             return state
         
         print(f'\n>>> Executing tool: {tool_name} with args: {arguments}')
-        result = tool_func(**arguments)
+        result = await tool_func(**arguments)
         
         # In ra các chunk tìm được từ retriever
         if tool_name == 'get_qa_retriever':
@@ -455,7 +456,7 @@ def _extract_tools_used(observations: list) -> list:
     return tools_used
 
 
-def run_query(query: str, graph, conversation_history: list = None) -> dict:
+async def run_query(query: str, graph, conversation_history: list = None) -> dict:
     state = {
         "query": query,
         "last_agent_response": "",
@@ -465,7 +466,7 @@ def run_query(query: str, graph, conversation_history: list = None) -> dict:
         "conversation_history": conversation_history or [],
     }
     
-    result = graph.invoke(state)
+    result = await graph.ainvoke(state)
     tools_used = _extract_tools_used(result.get('tool_observations', []))
     answer = result.get('final_answer') or result.get('last_agent_response', '')
     return {
@@ -474,7 +475,7 @@ def run_query(query: str, graph, conversation_history: list = None) -> dict:
     }
 
     
-def main():
+async def main():
 
     # graph = build_graph()
     # png_byte = graph.get_graph().draw_mermaid_png()
@@ -515,7 +516,7 @@ def main():
             continue
 
         try:
-            result = run_query(
+            result = await run_query(
                 query=query,
                 graph=graph,
                 conversation_history=conversation_history,
@@ -536,4 +537,4 @@ def main():
             print(f"Sorry, an error occurred: {e}\n")
         
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

@@ -1,11 +1,15 @@
 import os
 import torch
-from dotenv import load_dotenv
-from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
-from typing import Optional, Dict, List
+import asyncio
+import hashlib
+import json
 import logging
-import requests
+from dotenv import load_dotenv
+from typing import Optional, Dict, List, Any
+from qdrant_client.async_qdrant_client import AsyncQdrantClient
+from sentence_transformers import SentenceTransformer
+import httpx
+import redis.asyncio as redis
 
 load_dotenv()
 logging.basicConfig(
@@ -14,6 +18,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def _env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -21,41 +26,131 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-class Config():
+class Config:
     QDRANT_URL: str = os.getenv('QDRANT_URL')
     QDRANT_API_KEY: str = os.getenv('QDRANT_API_KEY')
     COLLECTION_NAME: str = os.getenv('COLLECTION_NAME')
     EMBEDDING_MODEL: str = 'paraphrase-multilingual-MiniLM-L12-v2'
-    TOP_K: int = 5  
+    TOP_K: int = 3  # Reduced from 5 for lower latency
     WEB_SEARCH_NUM: int = 5
     USE_LLM_RERANK: bool = _env_bool("USE_LLM_RERANK", False)
 
     SERPAPI_KEY: str = os.getenv('SERPAPI_KEY')
     LLAMA_SERVER_URL: str = os.getenv('LLAMA_SERVER_URL')
     
-    DEVICE: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    # Redis
+    REDIS_URL: str = os.getenv('REDIS_URL', 'redis://localhost:6379')
+    CACHE_TTL: int = int(os.getenv('CACHE_TTL', '3600'))  # 1 hour
     
+    # Timeouts
+    QDRANT_TIMEOUT: float = 10.0
+    WEB_SEARCH_TIMEOUT: float = 10.0
+    LLAMA_TIMEOUT: float = 30.0
+    
+    DEVICE: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+
 class QA_Retriever:
+    """Async Qdrant retriever with gRPC, connection pooling, and Redis caching."""
+    
     def __init__(self, config: Config, llm_client=None):
         self.config = config
-        self.llm = llm_client # Nhận instance OpenAI từ System.py
-        self.qdrant_client = QdrantClient(
-            url=config.QDRANT_URL, 
-            api_key=config.QDRANT_API_KEY
+        self.llm = llm_client
+        # Async client with gRPC (faster than REST)
+        self.qdrant_client = AsyncQdrantClient(
+            url=config.QDRANT_URL,
+            api_key=config.QDRANT_API_KEY,
+            prefer_grpc=True,
+            timeout=config.QDRANT_TIMEOUT,
         )
         self.encoder = SentenceTransformer(
             model_name_or_path=config.EMBEDDING_MODEL,
             device=config.DEVICE
         )
-
+        # Redis cache
+        self._redis: Optional[redis.Redis] = None
+        self._embed_cache: Dict[str, List[float]] = {}
+        self._embed_cache_max = 1000
+    
+    async def _get_redis(self) -> redis.Redis:
+        if self._redis is None:
+            self._redis = redis.from_url(self.config.REDIS_URL, decode_responses=True)
+        return self._redis
+    
+    def _get_embedding(self, text: str) -> List[float]:
+        """Get embedding with in-memory LRU cache."""
+        if text in self._embed_cache:
+            return self._embed_cache[text]
+        
+        emb = self.encoder.encode(text, normalize_embeddings=True).tolist()
+        if len(self._embed_cache) >= self._embed_cache_max:
+            self._embed_cache.pop(next(iter(self._embed_cache)))
+        self._embed_cache[text] = emb
+        return emb
+    
+    async def _get_embedding_async(self, text: str) -> List[float]:
+        """Get embedding with Redis + in-memory LRU cache for persistence across restarts."""
+        # Check in-memory cache first (fastest)
+        if text in self._embed_cache:
+            return self._embed_cache[text]
+        
+        # Check Redis cache
+        cache_key = f"embed:{hashlib.md5(text.encode()).hexdigest()}"
+        try:
+            r = await self._get_redis()
+            cached = await r.get(cache_key)
+            if cached:
+                emb = json.loads(cached)
+                # Populate in-memory cache
+                if len(self._embed_cache) >= self._embed_cache_max:
+                    self._embed_cache.pop(next(iter(self._embed_cache)))
+                self._embed_cache[text] = emb
+                logger.debug(f"Embedding cache HIT (Redis): {text[:50]}")
+                return emb
+        except Exception as e:
+            logger.warning(f"Redis embedding cache read error: {e}")
+        
+        # Compute embedding
+        emb = await asyncio.to_thread(self.encoder.encode, text, normalize_embeddings=True)
+        emb = emb.tolist()
+        
+        # Store in both caches
+        if len(self._embed_cache) >= self._embed_cache_max:
+            self._embed_cache.pop(next(iter(self._embed_cache)))
+        self._embed_cache[text] = emb
+        
+        try:
+            r = await self._get_redis()
+            await r.setex(cache_key, self.config.CACHE_TTL, json.dumps(emb))
+            logger.debug(f"Embedding cache SET (Redis): {text[:50]}")
+        except Exception as e:
+            logger.warning(f"Redis embedding cache write error: {e}")
+        
+        return emb
+    
+    async def _get_cached_result(self, cache_key: str) -> Optional[Dict]:
+        try:
+            r = await self._get_redis()
+            cached = await r.get(cache_key)
+            if cached:
+                logger.debug(f"Cache HIT: {cache_key[:50]}")
+                return json.loads(cached)
+        except Exception as e:
+            logger.warning(f"Redis cache read error: {e}")
+        return None
+    
+    async def _set_cached_result(self, cache_key: str, result: Dict) -> None:
+        try:
+            r = await self._get_redis()
+            await r.setex(cache_key, self.config.CACHE_TTL, json.dumps(result, default=str))
+            logger.debug(f"Cache SET: {cache_key[:50]}")
+        except Exception as e:
+            logger.warning(f"Redis cache write error: {e}")
+    
     def _critique_is_rel(self, query: str, context: str) -> float:
-        """
-        Thực hiện bước 'IsREL' trong Algorithm 1.
-        Đánh giá xem đoạn văn bản có thực sự chứa thông tin giải quyết câu hỏi không.
-        """
         if not self.llm or not self.config.USE_LLM_RERANK:
-            return 1.0 # Nếu không có LLM, mặc định tin vào Vector Score
-            
+            return 1.0
+        
         prompt = f"""
         Nhiệm vụ: Đánh giá mức độ liên quan (IsREL).
         Câu hỏi: {query}
@@ -67,34 +162,43 @@ class QA_Retriever:
         try:
             res = self.llm.invoke(prompt)
             return float(res.strip())
-        except:
+        except Exception:
             return 0.5
-
-    def search(self, query: str, top_k: Optional[int] = None) -> Dict:
+    
+    async def search(self, query: str, top_k: Optional[int] = None) -> Dict:
+        """Async search with Redis caching."""
+        k = top_k or self.config.TOP_K
+        cache_key = f"qa:{hashlib.md5(f'{query}:{k}'.encode()).hexdigest()}"
+        
+        # Try cache first
+        cached = await self._get_cached_result(cache_key)
+        if cached:
+            return cached
+        
         try:
             collection = self.config.COLLECTION_NAME
-            # 1. Vector Search (Retrieve)
-            query_vector = self.encoder.encode(query, normalize_embeddings=True).tolist()
             
-            raw_results = self.qdrant_client.query_points(
+            # 1. Vector Search (Retrieve) - use async embedding with Redis cache
+            query_vector = await self._get_embedding_async(query)
+            
+            limit = k * 2 if self.config.USE_LLM_RERANK else k
+            raw_results = await self.qdrant_client.query_points(
                 collection_name=collection,
                 query=query_vector,
-                limit=(top_k or self.config.TOP_K) * 2 if self.config.USE_LLM_RERANK else (top_k or self.config.TOP_K),
-            ).points
-
-            # 2. Critique & Re-rank (Algorithm 1: Rank yt based on IsREL)
+                limit=limit,
+            )
+            
+            # 2. Critique & Re-rank
             scored_results = []
-            for point in raw_results:
+            for point in raw_results.points:
                 text = point.payload.get('text', 'N/A')
                 if self.config.USE_LLM_RERANK:
-                    # Tính toán điểm kết hợp: Vector Score + LLM Critique
                     rel_score = self._critique_is_rel(query, text)
-                    # Công thức Rank: Trọng số 40% Vector, 60% LLM Critique
                     final_score = (point.score * 0.4) + (rel_score * 0.6)
                 else:
                     rel_score = 1.0
                     final_score = point.score
-
+                
                 scored_results.append({
                     'text': text,
                     'source': point.payload.get('source', 'N/A'),
@@ -102,22 +206,26 @@ class QA_Retriever:
                     'score': final_score,
                     'is_rel': rel_score
                 })
-
-            # Sắp xếp lại theo điểm Rank mới
+            
             scored_results.sort(key=lambda x: x['score'], reverse=True)
-            top_results = scored_results[:(top_k or self.config.TOP_K)]
-
+            top_results = scored_results[:k]
+            
             context_parts = [
                 f"[{i+1}] Score: {r['score']:.3f} | IsREL: {r['is_rel']} | Source: {r['source']}\n{r['text']}"
                 for i, r in enumerate(top_results)
             ]
-
-            return {
+            
+            result = {
                 'context': '\n\n'.join(context_parts),
                 'source': collection,
                 'results': top_results,
                 'top_score': top_results[0]['score'] if top_results else 0.0
             }
+            
+            # Cache the result
+            await self._set_cached_result(cache_key, result)
+            return result
+            
         except Exception as e:
             logger.error(f'QA search ERROR: {str(e)}')
             return {
@@ -126,19 +234,32 @@ class QA_Retriever:
                 'results': [],
                 'top_score': 0.0
             }
-            
-            
+    
+    async def close(self):
+        """Close connections."""
+        if self._redis:
+            await self._redis.close()
+        await self.qdrant_client.close()
+
+
 class WebSearcher:
+    """Async web searcher using httpx with timeout."""
+    
     def __init__(self, config: Config = Config()):
         self.config = config
         self.api_key = config.SERPAPI_KEY
         self.url = "https://serpapi.com/search"
+        self._client: Optional[httpx.AsyncClient] = None
         
         if not self.api_key:
             logger.warning("SERPAPI_KEY not found in .env file")
     
-    def search(self, query: str, add_medical_context: bool = True) -> Dict:
-
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.config.WEB_SEARCH_TIMEOUT)
+        return self._client
+    
+    async def search(self, query: str, add_medical_context: bool = True) -> Dict:
         if not self.api_key:
             return {
                 "context": "SerpAPI key not configured. Add SERPAPI_KEY to .env file.",
@@ -158,7 +279,8 @@ class WebSearcher:
                 "hl": "en"
             }
             
-            response = requests.get(self.url, params=params, timeout=10)
+            client = await self._get_client()
+            response = await client.get(self.url, params=params)
             response.raise_for_status()
             data = response.json()
             
@@ -189,6 +311,14 @@ class WebSearcher:
                 "results": results_details
             }
             
+        except httpx.TimeoutException:
+            logger.error("Web search timeout")
+            return {
+                "context": "Web search timeout",
+                "source": "Web Search Error",
+                "num_results": 0,
+                "results": []
+            }
         except Exception as e:
             logger.error(f"Web search error: {e}")
             return {
@@ -197,103 +327,125 @@ class WebSearcher:
                 "num_results": 0,
                 "results": []
             }
+    
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
-def vsl_restruct(text: str) -> Dict:
 
-    config = get_config()
+class VSL_Restructurer:
+    """Async VSL restructure using httpx with timeout."""
+    
+    def __init__(self, config: Config = Config()):
+        self.config = config
+        self._client: Optional[httpx.AsyncClient] = None
+    
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.config.LLAMA_TIMEOUT)
+        return self._client
+    
+    async def restruct(self, text: str) -> Dict:
+        if not self.config.LLAMA_SERVER_URL:
+            logger.warning("LLAMA_SERVER_URL not configured")
+            return {
+                "context": "LLaMA server URL chưa được cấu hình. Thêm LLAMA_SERVER_URL vào file .env.",
+                "source": "VSL Translation Error",
+                "num_results": 0,
+                "original": text
+            }
+        
+        if not text or not text.strip():
+            return {
+                "context": "Văn bản đầu vào trống.",
+                "source": "VSL Translation Error",
+                "num_results": 0,
+                "original": text
+            }
+        
+        try:
+            payload = {
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "Bạn là một chuyên gia ngôn ngữ, có thể tái cấu trúc câu từ ngôn ngữ nói Tiếng Việt thành cấu trúc câu Ngôn ngữ ký hiệu Việt Nam, hãy chuyển đổi câu sau:"
+                    },
+                    {
+                        "role": "user",
+                        "content": text.strip()
+                    }
+                ],
+                "temperature": 0,
+                "max_tokens": 128
+            }
+            
+            logger.info(f"Calling LLaMA server at {self.config.LLAMA_SERVER_URL} for VSL restruct")
+            client = await self._get_client()
+            r = await client.post(
+                self.config.LLAMA_SERVER_URL,
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            )
+            r.raise_for_status()
+            data = r.json()
+            
+            result = data["choices"][0]["message"]["content"].strip()
+            logger.info(f"VSL restruct successful: '{text[:50]}...' -> '{result[:50]}...'")
+            
+            return {
+                "context": result,
+                "source": "VSL Translation (LLaMA)",
+                "num_results": 1,
+                "original": text
+            }
+            
+        except httpx.ConnectError:
+            msg = f"Không thể kết nối LLaMA server tại {self.config.LLAMA_SERVER_URL}. Kiểm tra server đã chạy chưa."
+            logger.error(msg)
+            return {
+                "context": msg,
+                "source": "VSL Translation Error",
+                "num_results": 0,
+                "original": text
+            }
+        except httpx.TimeoutException:
+            msg = f"LLaMA server không phản hồi trong thời gian chờ ({self.config.LLAMA_TIMEOUT}s)."
+            logger.error(msg)
+            return {
+                "context": msg,
+                "source": "VSL Translation Error",
+                "num_results": 0,
+                "original": text
+            }
+        except (KeyError, IndexError) as e:
+            msg = f"Lỗi phân tích phản hồi từ LLaMA server: {str(e)}"
+            logger.error(msg)
+            return {
+                "context": msg,
+                "source": "VSL Translation Error",
+                "num_results": 0,
+                "original": text
+            }
+        except Exception as e:
+            logger.error(f"VSL restruct unexpected error: {e}")
+            return {
+                "context": f"Lỗi restruct VSL: {str(e)}",
+                "source": "VSL Translation Error",
+                "num_results": 0,
+                "original": text
+            }
+    
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
-    if not config.LLAMA_SERVER_URL:
-        logger.warning("LLAMA_SERVER_URL not configured")
-        return {
-            "context": "LLaMA server URL chưa được cấu hình. Thêm LLAMA_SERVER_URL vào file .env.",
-            "source": "VSL Translation Error",
-            "num_results": 0,
-            "original": text
-        }
 
-    if not text or not text.strip():
-        return {
-            "context": "Văn bản đầu vào trống.",
-            "source": "VSL Translation Error",
-            "num_results": 0,
-            "original": text
-        }
+# Singleton instances
+_config_instance: Optional[Config] = None
+_qa_retriever_instance: Optional[QA_Retriever] = None
+_web_searcher_instance: Optional[WebSearcher] = None
+_vsl_restructurer_instance: Optional[VSL_Restructurer] = None
 
-    try:
-        payload = {
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "Bạn là một chuyên gia ngôn ngữ, có thể tái cấu trúc câu từ ngôn ngữ nói Tiếng Việt thành cấu trúc câu Ngôn ngữ ký hiệu Việt Nam, hãy chuyển đổi câu sau:"
-                },
-                {
-                    "role": "user",
-                    "content": text.strip()
-                }
-            ],
-            "temperature": 0,
-            "max_tokens": 128
-        }
-
-        logger.info(f"Calling LLaMA server at {config.LLAMA_SERVER_URL} for VSL restruct")
-        r = requests.post(
-            config.LLAMA_SERVER_URL,
-            json=payload,
-            timeout=30,
-            headers={"Content-Type": "application/json"}
-        )
-        r.raise_for_status()
-        data = r.json()
-
-        result = data["choices"][0]["message"]["content"].strip()
-        logger.info(f"VSL restruct successful: '{text[:50]}...' -> '{result[:50]}...'")
-
-        return {
-            "context": result,
-            "source": "VSL Translation (LLaMA)",
-            "num_results": 1,
-            "original": text
-        }
-
-    except requests.exceptions.ConnectionError:
-        msg = f"Không thể kết nối LLaMA server tại {config.LLAMA_SERVER_URL}. Kiểm tra server đã chạy chưa."
-        logger.error(msg)
-        return {
-            "context": msg,
-            "source": "VSL Translation Error",
-            "num_results": 0,
-            "original": text
-        }
-    except requests.exceptions.Timeout:
-        msg = "LLaMA server không phản hồi trong thời gian chờ (30s)."
-        logger.error(msg)
-        return {
-            "context": msg,
-            "source": "VSL Translation Error",
-            "num_results": 0,
-            "original": text
-        }
-    except (KeyError, IndexError) as e:
-        msg = f"Lỗi phân tích phản hồi từ LLaMA server: {str(e)}"
-        logger.error(msg)
-        return {
-            "context": msg,
-            "source": "VSL Translation Error",
-            "num_results": 0,
-            "original": text
-        }
-    except Exception as e:
-        logger.error(f"VSL restruct unexpected error: {e}")
-        return {
-            "context": f"Lỗi restruct VSL: {str(e)}",
-            "source": "VSL Translation Error",
-            "num_results": 0,
-            "original": text
-        }
-
-_config_instance = None
-_qa_retriever_instance = None
-_web_searcher_instance = None
 
 def get_config() -> Config:
     global _config_instance
@@ -301,32 +453,67 @@ def get_config() -> Config:
         _config_instance = Config()
     return _config_instance
 
-def get_qa_retriever_instance() -> QA_Retriever:
+
+async def get_qa_retriever_instance() -> QA_Retriever:
     global _qa_retriever_instance
     if _qa_retriever_instance is None:
         _qa_retriever_instance = QA_Retriever(get_config())
     return _qa_retriever_instance
 
-def get_web_searcher_instance() -> WebSearcher:
+
+async def get_web_searcher_instance() -> WebSearcher:
     global _web_searcher_instance
     if _web_searcher_instance is None:
         _web_searcher_instance = WebSearcher(get_config())
     return _web_searcher_instance
 
-# @tool
-# Trong file Tools.py
 
-def get_qa_retriever(query: str, top_k: Optional[int] = None, llm_client=None) -> Dict:
-    retriever_instance = get_qa_retriever_instance()
-    retriever_instance.llm = llm_client 
-    return retriever_instance.search(query, top_k=top_k)
+async def get_vsl_restructurer_instance() -> VSL_Restructurer:
+    global _vsl_restructurer_instance
+    if _vsl_restructurer_instance is None:
+        _vsl_restructurer_instance = VSL_Restructurer(get_config())
+    return _vsl_restructurer_instance
 
-# @tool
-def get_web_search(query: str) -> Dict:
-    return get_web_searcher_instance().search(query)
-    
+
+# Tool functions (async)
+async def get_qa_retriever(query: str, top_k: Optional[int] = None, llm_client=None) -> Dict:
+    retriever = await get_qa_retriever_instance()
+    retriever.llm = llm_client
+    return await retriever.search(query, top_k=top_k)
+
+
+async def get_web_search(query: str) -> Dict:
+    searcher = await get_web_searcher_instance()
+    return await searcher.search(query)
+
+
+async def vsl_restruct(text: str) -> Dict:
+    restructurer = await get_vsl_restructurer_instance()
+    return await restructurer.restruct(text)
+
+
+# Sync wrappers for backward compatibility (used by System.py call_tool)
+def get_qa_retriever_sync(query: str, top_k: Optional[int] = None, llm_client=None) -> Dict:
+    """Sync wrapper for backward compatibility."""
+    return asyncio.run(get_qa_retriever(query, top_k, llm_client))
+
+
+def get_web_search_sync(query: str) -> Dict:
+    return asyncio.run(get_web_search(query))
+
+
+def vsl_restruct_sync(text: str) -> Dict:
+    return asyncio.run(vsl_restruct(text))
+
 
 TOOLS_MAPPING_TO_FUNC = {
+    "get_qa_retriever": get_qa_retriever_sync,
+    "get_web_search": get_web_search_sync,
+    "vsl_restruct": vsl_restruct_sync
+}
+
+# Async versions for direct use
+TOOLS_MAPPING_TO_FUNC_ASYNC = {
     "get_qa_retriever": get_qa_retriever,
     "get_web_search": get_web_search,
     "vsl_restruct": vsl_restruct
