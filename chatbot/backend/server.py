@@ -184,6 +184,7 @@ async def process_chat_task(task_id: str, graph, session: dict, conversation_his
                     current_step="Cancelled - no response generated"
                 )
             logger.info(f"Task {task_id} cancelled after query execution")
+            await System.clear_cancel_flag(task_id)
             return
         
         await update_task(task_id, current_step="Saving response", progress=0.8)
@@ -212,6 +213,7 @@ async def process_chat_task(task_id: str, graph, session: dict, conversation_his
             }
         )
         logger.info(f"Task {task_id} completed for session {session['session_id']}")
+        await System.clear_cancel_flag(task_id)
         
     except Exception as e:
         logger.error(f"Task {task_id} failed: {e}")
@@ -222,6 +224,7 @@ async def process_chat_task(task_id: str, graph, session: dict, conversation_his
             error=str(e),
             current_step="Error"
         )
+        await System.clear_cancel_flag(task_id)
 
 
 # =============================================================================
