@@ -490,7 +490,8 @@ function updateLoadingProgress(progress, step) {
       progressEl.className = "loading-progress";
       indicator.appendChild(progressEl);
     }
-    progressEl.textContent = `${Math.round(progress * 100)}% - ${step}`;
+    // Only show step name, hide percentage
+    progressEl.textContent = step;
   }
 }
 

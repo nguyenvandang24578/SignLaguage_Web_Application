@@ -11,6 +11,22 @@ import ChatHistory
 
 import logging
 
+# Global cancellation flag store (task_id -> bool)
+_cancel_flags: dict[str, bool] = {}
+_cancel_flags_lock = asyncio.Lock()
+
+async def set_cancel_flag(task_id: str, value: bool = True):
+    async with _cancel_flags_lock:
+        _cancel_flags[task_id] = value
+
+async def get_cancel_flag(task_id: str) -> bool:
+    async with _cancel_flags_lock:
+        return _cancel_flags.get(task_id, False)
+
+async def clear_cancel_flag(task_id: str):
+    async with _cancel_flags_lock:
+        _cancel_flags.pop(task_id, None)
+
 load_dotenv()
 
 logging.basicConfig(
@@ -22,8 +38,8 @@ logger = logging.getLogger(__name__)
 
 class Config:
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-    OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://api.vilao.ai/v1')
-    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'ts/gpt-5.4-mini')
+    OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     EMBEDDING_MODEL_NAME = os.getenv('EMBEDDING_MODEL_NAME', 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
     MAX_OUTPUT_TOKENS = int(os.getenv('MAX_OUTPUT_TOKENS', '1024'))
@@ -169,7 +185,14 @@ def _format_history(history: list, max_turns: int = 10) -> str:
     return '\n'.join(lines)
 
 
-def call_agent(state: AgentState) -> AgentState:
+async def call_agent(state: AgentState) -> AgentState:
+    # Check for cancellation
+    task_id = state.get('task_id')
+    if task_id and await get_cancel_flag(task_id):
+        logger.info(f"Task {task_id} cancelled in call_agent")
+        state['final_answer'] = ""
+        return state
+    
     observations = '\n\n'.join(state.get('tool_observations', []))
     if not observations:
         observations = 'None yet - first turn'
@@ -222,6 +245,12 @@ Hãy phản hồi ngay bây giờ theo đúng định dạng đã quy định:
     
     response = openai_model.invoke(prompt=prompt)
 
+    # Check for cancellation after LLM call
+    if task_id and await get_cancel_flag(task_id):
+        logger.info(f"Task {task_id} cancelled after LLM call in call_agent")
+        state['final_answer'] = ""
+        return state
+
     # Fix: nếu Groq vẫn cố gọi tool dù đã có observations (lỗi tool_choice=none),
     # kiểm tra xem tool/query này đã được thực thi chưa → force READY
     if response and 'ACTION:' in response:
@@ -259,6 +288,13 @@ Hãy phản hồi ngay bây giờ theo đúng định dạng đã quy định:
 
 
 async def call_tool(state: AgentState) -> AgentState:
+    # Check for cancellation
+    task_id = state.get('task_id')
+    if task_id and await get_cancel_flag(task_id):
+        logger.info(f"Task {task_id} cancelled in call_tool")
+        state['final_answer'] = ""
+        return state
+    
     action_text = state.get('last_agent_response', '')
     
     if 'ACTION:' not in action_text:
@@ -292,6 +328,12 @@ async def call_tool(state: AgentState) -> AgentState:
         
         print(f'\n>>> Executing tool: {tool_name} with args: {arguments}')
         result = await tool_func(**arguments)
+        
+        # Check for cancellation after tool execution
+        if task_id and await get_cancel_flag(task_id):
+            logger.info(f"Task {task_id} cancelled after tool execution in call_tool")
+            state['final_answer'] = ""
+            return state
         
         # In ra các chunk tìm được từ retriever
         if tool_name == 'get_qa_retriever':
@@ -327,7 +369,14 @@ async def call_tool(state: AgentState) -> AgentState:
     return state
     
     
-def generate_answer(state: AgentState) -> AgentState:
+async def generate_answer(state: AgentState) -> AgentState:
+    # Check for cancellation
+    task_id = state.get('task_id')
+    if task_id and await get_cancel_flag(task_id):
+        logger.info(f"Task {task_id} cancelled in generate_answer")
+        state['final_answer'] = ""
+        return state
+    
     observations_list = state.get('tool_observations', [])
     observations = '\n\n'.join(observations_list)
 
@@ -377,6 +426,13 @@ TÓM TẮT KẾT QUẢ:
 Hãy viết câu trả lời cuối cùng:
 """
     answer = openai_model.invoke(prompt=prompt, temperature=0.7)
+    
+    # Check for cancellation after LLM call
+    if task_id and await get_cancel_flag(task_id):
+        logger.info(f"Task {task_id} cancelled after LLM call in generate_answer")
+        state['final_answer'] = ""
+        return state
+    
     state['final_answer'] = answer
 
     print(f'\n--- FINAL ANSWER (temp=0.7) ---')
@@ -387,6 +443,12 @@ Hãy viết câu trả lời cuối cùng:
 
 
 def should_continue(state: AgentState) -> str:
+    # Check for cancellation
+    task_id = state.get('task_id')
+    if task_id:
+        # We can't await here, so we'll check in the async nodes
+        pass
+    
     response = state.get("last_agent_response", "").upper()
     num_steps = state.get("num_steps", 0)
     has_observations = bool(state.get("tool_observations"))
@@ -456,7 +518,7 @@ def _extract_tools_used(observations: list) -> list:
     return tools_used
 
 
-async def run_query(query: str, graph, conversation_history: list = None) -> dict:
+async def run_query(query: str, graph, conversation_history: list = None, task_id: str = None) -> dict:
     state = {
         "query": query,
         "last_agent_response": "",
@@ -464,6 +526,7 @@ async def run_query(query: str, graph, conversation_history: list = None) -> dic
         "num_steps": 0,
         "final_answer": "",
         "conversation_history": conversation_history or [],
+        "task_id": task_id,
     }
     
     result = await graph.ainvoke(state)

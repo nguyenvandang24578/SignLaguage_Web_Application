@@ -101,6 +101,9 @@ async def update_task(task_id: str, **kwargs) -> Optional[ChatTask]:
 
 async def cancel_task(task_id: str) -> Optional[ChatTask]:
     """Cancel a running task."""
+    # Set cancellation flag for the System module
+    await System.set_cancel_flag(task_id, True)
+    
     async with _task_store_lock:
         task = _task_store.get(task_id)
         if task and task.status in (TaskStatus.PENDING, TaskStatus.RUNNING):
@@ -148,7 +151,8 @@ async def process_chat_task(task_id: str, graph, session: dict, conversation_his
         result = await System.run_query(
             query=task.user_message,
             graph=graph,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            task_id=task_id
         )
         
         # Check for cancellation after query completes
