@@ -43,7 +43,8 @@ class Config:
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     EMBEDDING_MODEL_NAME = os.getenv('EMBEDDING_MODEL_NAME', 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
     MAX_OUTPUT_TOKENS = int(os.getenv('MAX_OUTPUT_TOKENS', '1024'))
-    MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
+    MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3')) 
+    LLM_TIMEOUT = float(os.getenv('LLM_TIMEOUT', '10.0'))  # Timeout for LLM calls in seconds
 
 _embedding_model = None
 
@@ -62,34 +63,104 @@ def preload_embedding_model():
     logger.info('Embedding model is warm and ready.')
 
 
+class QuotaExhaustedError(Exception):
+    """Raised when API quota/rate limit is exhausted - no point retrying."""
+    pass
+
+
+def _is_quota_error(e: Exception) -> bool:
+    """Check if the error indicates quota/rate-limit exhaustion (no point retrying)."""
+    error_str = str(e).lower()
+    quota_indicators = [
+        'quota', 'rate_limit', 'rate limit', 'insufficient_quota',
+        '429', 'too many requests', 'resource_exhausted',
+        'billing', 'exceeded'
+    ]
+    return any(indicator in error_str for indicator in quota_indicators)
+
+
 class OpenAIClient:
     def __init__(self, config):
         self.config = config
         self.client = OpenAI(
             api_key=self.config.OPENAI_API_KEY,
             base_url=self.config.OPENAI_BASE_URL,
+            timeout=self.config.LLM_TIMEOUT,
         )
+        self._quota_exhausted = False  # Track quota state to fail fast
         
+    def _call_api(self, prompt: str, temperature: float = 0) -> str:
+        """Synchronous API call (runs in thread pool for async cancellation)."""
+        response = self.client.chat.completions.create(
+            model=self.config.OPENAI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            max_tokens=self.config.MAX_OUTPUT_TOKENS,
+        )
+        return (response.choices[0].message.content or "").strip()
+
     def invoke(self, prompt: str, temperature: float = 0) -> str:
+        """Synchronous invoke with retry logic. Fails fast on quota errors."""
+        # If quota was previously exhausted, fail immediately
+        if self._quota_exhausted:
+            logger.warning('Skipping LLM call - quota previously exhausted')
+            raise QuotaExhaustedError('API quota exhausted')
+        
         max_retries = self.config.MAX_RETRIES
-        last_error = None
-        try:
-            for attempt in range(1, max_retries + 1):
-                try:
-                    response = self.client.chat.completions.create(
-                        model=self.config.OPENAI_MODEL,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=temperature,
-                        max_tokens=self.config.MAX_OUTPUT_TOKENS,
-                    )
-                    return (response.choices[0].message.content or "").strip()
-                except Exception as e:
-                    last_error = e
-                    logger.error(f'OpenAI ERROR (attempt {attempt}/{max_retries}): {str(e)}')
-            return ""
-        except Exception as e:
-            logger.error(f'OpenAI ERROR: {str(e)}')
-            return ""
+        for attempt in range(1, max_retries + 1):
+            try:
+                return self._call_api(prompt, temperature)
+            except Exception as e:
+                # Quota/rate-limit: fail immediately, don't retry
+                if _is_quota_error(e):
+                    self._quota_exhausted = True
+                    logger.error(f'Quota/rate-limit exhausted: {str(e)}')
+                    raise QuotaExhaustedError(str(e))
+                logger.error(f'OpenAI ERROR (attempt {attempt}/{max_retries}): {str(e)}')
+                if attempt == max_retries:
+                    return ""
+        return ""
+
+    async def ainvoke(self, prompt: str, temperature: float = 0, task_id: str = None) -> str:
+        """
+        Async invoke that can be cancelled via task_id flag.
+        Runs the blocking API call in a thread and checks cancellation frequently.
+        """
+        # If quota was previously exhausted, fail immediately
+        if self._quota_exhausted:
+            logger.warning('Skipping LLM call - quota previously exhausted')
+            raise QuotaExhaustedError('API quota exhausted')
+        
+        max_retries = self.config.MAX_RETRIES
+        for attempt in range(1, max_retries + 1):
+            # Check cancellation before each attempt
+            if task_id and await get_cancel_flag(task_id):
+                logger.info(f'Task {task_id} cancelled before LLM attempt {attempt}')
+                return ""
+            
+            try:
+                # Run blocking call in thread pool so we can cancel/timeout
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(self._call_api, prompt, temperature),
+                    timeout=self.config.LLM_TIMEOUT + 2  # Small buffer over HTTP timeout
+                )
+                return result
+            except asyncio.TimeoutError:
+                logger.error(f'LLM call timed out (attempt {attempt}/{max_retries})')
+                if attempt == max_retries:
+                    return ""
+            except asyncio.CancelledError:
+                logger.info(f'LLM call cancelled for task {task_id}')
+                return ""
+            except Exception as e:
+                if _is_quota_error(e):
+                    self._quota_exhausted = True
+                    logger.error(f'Quota/rate-limit exhausted: {str(e)}')
+                    raise QuotaExhaustedError(str(e))
+                logger.error(f'OpenAI ERROR (attempt {attempt}/{max_retries}): {str(e)}')
+                if attempt == max_retries:
+                    return ""
+        return ""
     
     
 def build_tools_list() -> str:
@@ -243,7 +314,12 @@ QUAN TRỌNG:
 Hãy phản hồi ngay bây giờ theo đúng định dạng đã quy định:
 """
     
-    response = openai_model.invoke(prompt=prompt)
+    try:
+        response = await openai_model.ainvoke(prompt=prompt, task_id=task_id)
+    except QuotaExhaustedError:
+        logger.error('Quota exhausted in call_agent - stopping immediately')
+        state['final_answer'] = "⚠️ Xin lỗi, hệ thống AI tạm thời không khả dụng (hết quota). Vui lòng thử lại sau."
+        return state
 
     # Check for cancellation after LLM call
     if task_id and await get_cancel_flag(task_id):
@@ -377,6 +453,11 @@ async def generate_answer(state: AgentState) -> AgentState:
         state['final_answer'] = ""
         return state
     
+    # If final_answer already set (e.g., from quota error in call_agent), skip LLM call
+    if state.get('final_answer'):
+        logger.info("generate_answer: final_answer already set, skipping LLM call")
+        return state
+    
     observations_list = state.get('tool_observations', [])
     observations = '\n\n'.join(observations_list)
 
@@ -425,7 +506,12 @@ TÓM TẮT KẾT QUẢ:
 
 Hãy viết câu trả lời cuối cùng:
 """
-    answer = openai_model.invoke(prompt=prompt, temperature=0.7)
+    try:
+        answer = await openai_model.ainvoke(prompt=prompt, temperature=0.7, task_id=task_id)
+    except QuotaExhaustedError:
+        logger.error('Quota exhausted in generate_answer - returning quota message')
+        state['final_answer'] = "⚠️ Xin lỗi, hệ thống AI tạm thời không khả dụng (hết quota). Vui lòng thử lại sau."
+        return state
     
     # Check for cancellation after LLM call
     if task_id and await get_cancel_flag(task_id):
@@ -449,6 +535,11 @@ def should_continue(state: AgentState) -> str:
         # We can't await here, so we'll check in the async nodes
         pass
     
+    # If final_answer is already set (e.g., quota error, cancellation), go to END
+    if state.get('final_answer'):
+        print("Routing to GENERATE_ANSWER (final_answer already set)")
+        return "answer"
+    
     response = state.get("last_agent_response", "").upper()
     num_steps = state.get("num_steps", 0)
     has_observations = bool(state.get("tool_observations"))
@@ -459,8 +550,12 @@ def should_continue(state: AgentState) -> str:
         if has_observations:
             print("Routing to GENERATE_ANSWER (empty response but has observations)")
             return "answer"
-        # Chưa có gì, thử lại nếu còn bước
-        if num_steps < 3:
+        # Check if quota is exhausted - don't retry
+        if openai_model._quota_exhausted:
+            print("Routing to GENERATE_ANSWER (quota exhausted, no point retrying)")
+            return "answer"
+        # Chưa có gì, thử lại nếu còn bước (max 1 retry instead of 3)
+        if num_steps < 2:
             print("Routing to AGENT retry (empty response, no observations yet)")
             return "retry"
         print("Routing to GENERATE_ANSWER (empty response, max steps)")

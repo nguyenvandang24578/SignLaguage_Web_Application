@@ -195,6 +195,7 @@ async def process_chat_task(task_id: str, graph, session: dict, conversation_his
         QUOTA_MSG = "⚠️ Xin lỗi, hệ thống AI tạm thời không khả dụng (hết quota). Vui lòng thử lại sau."
         if not response_text or not response_text.strip():
             response_text = QUOTA_MSG
+            logger.warning(f"Task {task_id}: empty response, using quota message")
         
         # Step 2: Save to session history
         await ChatHistory.append_messages(session, task.user_message, response_text)
