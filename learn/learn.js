@@ -1382,8 +1382,18 @@ async function startCamera() {
   }
 
   try {
+    // Chọn camera laptop (built-in) cụ thể, tránh conflict với cam rời (đang dùng bởi quiz server)
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter(d => d.kind === 'videoinput');
+    const laptopCam = cameras.length > 1 ? cameras[0] : null; // camera đầu tiên = built-in
+
+    const videoConstraints = {
+      width: { ideal: 640 }, height: { ideal: 480 },
+      ...(laptopCam ? { deviceId: { exact: laptopCam.deviceId } } : { facingMode: 'user' })
+    };
+
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      video: videoConstraints,
       audio: false,
     });
     practiceState.cameraStream = stream;

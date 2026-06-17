@@ -11,3 +11,14 @@ opencode.json
 
 # Chatbot data
 chatbot/backend/data/chat.db
+# Database temp files
+*.db-shm
+*.db-wal
+
+# Model files (quá nặng cho Git)
+chatbot/backend/models/
+*.gguf
+
+# OS / Editor
+.DS_Store
+Thumbs.db

@@ -69,7 +69,7 @@ PREDICTION_THRESHOLD = 0.40
 # Camera capture — match demo gốc (1280×720)
 # 1080p capture quá nặng: read() chậm hơn, resize + flip + encode đều tăng.
 # 720p đủ nét cho skeleton display + MediaPipe không cần cao hơn.
-CAMERA_SRC = 0
+CAMERA_SRC = 1
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
 CAMERA_FPS = 30

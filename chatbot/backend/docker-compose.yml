@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
 
   llama-server:
-    image: ghcr.io/ggerganov/llama.cpp:server
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
     container_name: llama-server
     ports:
       - "8080:8080"
@@ -27,16 +27,17 @@ services:
       --port 8080
       -m /models/qwen3.gguf
       -c 4096
-      -ngl 0
+      -ngl 99
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     restart: unless-stopped
-    # Nếu có GPU NVIDIA, uncomment 2 dòng dưới và đổi image thành ghcr.io/ggerganov/llama.cpp:server-cuda
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    # Neu khong co GPU, doi image thanh ghcr.io/ggml-org/llama.cpp:server
+    # va xoa block deploy, doi -ngl 99 thanh -ngl 0
 
   redis:
     image: redis:7-alpine
