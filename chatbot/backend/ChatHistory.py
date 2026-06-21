@@ -9,13 +9,11 @@ from contextlib import asynccontextmanager
 BACKEND_ROOT = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BACKEND_ROOT, "data", "chat.db")
 
-# Connection pool
 _pool: Optional[aiosqlite.Connection] = None
 _pool_lock = None
 
 
 async def _get_pool() -> aiosqlite.Connection:
-    """Get or create a connection pool with WAL mode enabled."""
     global _pool, _pool_lock
     import asyncio
     if _pool_lock is None:
@@ -26,19 +24,16 @@ async def _get_pool() -> aiosqlite.Connection:
             os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
             _pool = await aiosqlite.connect(DB_PATH)
             _pool.row_factory = aiosqlite.Row
-            # Enable WAL mode for better concurrency
             await _pool.execute("PRAGMA journal_mode=WAL")
-            # Optimize for read-heavy workloads
             await _pool.execute("PRAGMA synchronous=NORMAL")
-            await _pool.execute("PRAGMA cache_size=-32768")  # 32MB cache
+            await _pool.execute("PRAGMA cache_size=-32768")
             await _pool.execute("PRAGMA temp_store=MEMORY")
-            await _pool.execute("PRAGMA mmap_size=268435456")  # 256MB mmap
+            await _pool.execute("PRAGMA mmap_size=268435456")
             await _pool.commit()
         return _pool
 
 
 async def _ensure_table():
-    """Create sessions table if not exists."""
     pool = await _get_pool()
     await pool.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
@@ -68,10 +63,7 @@ def _row_to_dict(row: aiosqlite.Row) -> dict:
     return d
 
 
-# ─── Core API ────────────────────────────────────────────────────────────────
-
 async def create_session() -> dict:
-    """Tạo phiên mới, lưu vào SQLite, trả về session dict."""
     await _ensure_table()
     now = _now()
     session = {
@@ -92,7 +84,6 @@ async def create_session() -> dict:
 
 
 async def load_session(session_id: str) -> Optional[dict]:
-    """Load phiên từ DB. Trả về None nếu không tìm thấy."""
     await _ensure_table()
     pool = await _get_pool()
     async with pool.execute(
@@ -105,7 +96,6 @@ async def load_session(session_id: str) -> Optional[dict]:
 
 
 async def _save_session(session: dict):
-    """Cập nhật session trong DB."""
     session["updated_at"] = _now()
     pool = await _get_pool()
     await pool.execute("""
@@ -121,13 +111,11 @@ async def _save_session(session: dict):
 
 
 async def append_messages(session: dict, user_query: str, bot_response: str) -> dict:
-    """Thêm cặp (user, assistant) vào session và lưu DB."""
     now = _now()
     session["messages"].append({"role": "user",      "content": user_query,   "timestamp": now})
     session["messages"].append({"role": "assistant",  "content": bot_response, "timestamp": now})
     session["turn_count"] = len(session["messages"]) // 2
 
-    # Dùng câu hỏi đầu tiên làm tiêu đề
     if session["turn_count"] == 1:
         session["title"] = _short_title(user_query)
 
@@ -136,18 +124,11 @@ async def append_messages(session: dict, user_query: str, bot_response: str) -> 
 
 
 def get_history_list(messages: list, max_turns: int = 3) -> list:
-    """
-    Trả về list {"role", "content"} của N lượt gần nhất để truyền vào model.
-    max_turns=3 → tối đa 6 messages (3 user + 3 assistant).
-    """
     recent = messages[-(max_turns * 2):]
     return [{"role": m["role"], "content": m["content"]} for m in recent]
 
 
-# ─── Session listing ──────────────────────────────────────────────────────────
-
 async def list_sessions() -> list[dict]:
-    """Danh sách tất cả phiên, mới nhất lên đầu."""
     await _ensure_table()
     pool = await _get_pool()
     async with pool.execute("""
@@ -160,7 +141,6 @@ async def list_sessions() -> list[dict]:
 
 
 async def delete_session(session_id: str) -> bool:
-    """Xoá phiên khỏi DB. Trả về True nếu thành công."""
     await _ensure_table()
     pool = await _get_pool()
     cursor = await pool.execute(
@@ -171,14 +151,11 @@ async def delete_session(session_id: str) -> bool:
 
 
 async def select_or_create_session() -> dict:
-    """Lấy phiên mới nhất hoặc tạo mới nếu không có."""
     sessions = await list_sessions()
     if sessions:
         return await load_session(sessions[0]["session_id"])
     return await create_session()
 
-
-# ─── Sync wrappers for backward compatibility ────────────────────────────────
 
 import asyncio
 

@@ -2,13 +2,10 @@ const API = "http://localhost:8000/api";
 
 let currentSessionId = null;
 let isLoading = false;
-let currentTaskId = null;
-let pollingInterval = null;
 
 const messagesEl = document.getElementById("messages");
 const promptEl = document.getElementById("prompt");
 const sendBtn = document.getElementById("send-btn");
-const cancelBtn = document.getElementById("cancel-btn");
 const sessionList = document.getElementById("session-list");
 const toastEl = document.getElementById("toast");
 
@@ -31,9 +28,7 @@ promptEl.addEventListener("keydown", (e) => {
 });
 
 sendBtn.addEventListener("click", sendMessage);
-cancelBtn.addEventListener("click", cancelCurrentTask);
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function hideWelcome() {
   const w = document.getElementById("welcome");
   if (w) w.remove();
@@ -52,8 +47,7 @@ function makeAvatar(role) {
   return wrap;
 }
 
-// ── Render messages ───────────────────────────────────────────────────────────
-function appendMessage(role, text) {
+function appendMessage(role, text, toolsUsed = [], elapsed = null) {
   hideWelcome();
 
   const row = document.createElement("div");
@@ -66,7 +60,18 @@ function appendMessage(role, text) {
 
   const sender = document.createElement("div");
   sender.className = "msg-sender";
-  sender.textContent = role === "user" ? "Bạn" : "Bot";
+
+  if (role === "user") {
+    sender.textContent = "Bạn";
+  } else {
+    sender.textContent = "Bot";
+    if (elapsed !== null) {
+      const timeSpan = document.createElement("span");
+      timeSpan.className = "msg-time";
+      timeSpan.textContent = `${elapsed.toFixed(1)}s`;
+      sender.appendChild(timeSpan);
+    }
+  }
 
   const msgText = document.createElement("div");
   msgText.className = "msg-text";
@@ -74,6 +79,14 @@ function appendMessage(role, text) {
 
   content.appendChild(sender);
   content.appendChild(msgText);
+
+  if (role !== "user" && Array.isArray(toolsUsed) && toolsUsed.length > 0) {
+    const tools = document.createElement("div");
+    tools.className = "msg-tools";
+    tools.textContent = `${toolsUsed.join(", ")}`;
+    content.appendChild(tools);
+  }
+
   row.appendChild(avatar);
   row.appendChild(content);
   messagesEl.appendChild(row);
@@ -109,72 +122,68 @@ function appendLoadingIndicator() {
   messagesEl.appendChild(row);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 
-  // Show cancel button in input area, hide send button
-  setLoadingState(true);
+  sendBtn.disabled = true;
 }
 
 function removeLoading() {
   const el = document.getElementById("loading-row");
   if (el) el.remove();
-  setLoadingState(false);
+  sendBtn.disabled = false;
 }
 
-function setLoadingState(isLoading) {
-  if (isLoading) {
-    sendBtn.style.display = "none";
-    cancelBtn.style.display = "flex";
-  } else {
-    sendBtn.style.display = "flex";
-    cancelBtn.style.display = "none";
-  }
-}
-
-function replaceLoadingWithMessage(text, toolsUsed = []) {
+function replaceLoadingWithMessage(text, toolsUsed = [], elapsed = null) {
   const row = document.getElementById("loading-row");
   if (!row) {
-    appendMessage("assistant", text);
+    appendMessage("assistant", text, toolsUsed, elapsed);
     return;
   }
 
   row.removeAttribute("id");
   const content = row.querySelector(".msg-content");
   if (!content) {
-    appendMessage("assistant", text);
+    appendMessage("assistant", text, toolsUsed, elapsed);
     return;
   }
 
   const indicator = content.querySelector(".msg-indicator");
   if (indicator) indicator.remove();
 
-  if (Array.isArray(toolsUsed) && toolsUsed.length > 0) {
-    const tools = document.createElement("div");
-    tools.className = "msg-tools";
-    tools.textContent = `Tool: ${toolsUsed.join(", ")}`;
-    content.appendChild(tools);
+  const sender = content.querySelector(".msg-sender");
+  if (sender && elapsed !== null) {
+    const oldTime = sender.querySelector(".msg-time");
+    if (oldTime) oldTime.remove();
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "msg-time";
+    timeSpan.textContent = `${elapsed.toFixed(1)}s`;
+    sender.appendChild(timeSpan);
   }
 
   const msgText = document.createElement("div");
   msgText.className = "msg-text";
   msgText.textContent = text;
   content.appendChild(msgText);
+
+  if (Array.isArray(toolsUsed) && toolsUsed.length > 0) {
+    const tools = document.createElement("div");
+    tools.className = "msg-tools";
+    tools.textContent = `🔧${toolsUsed.join(", ")}`;
+    content.appendChild(tools);
+  }
+
   messagesEl.scrollTop = messagesEl.scrollHeight;
-  setLoadingState(false);
+  sendBtn.disabled = false;
 }
 
-// ── Session sidebar ───────────────────────────────────────────────────────────
 async function loadSessionList() {
   try {
     const res = await fetch(`${API}/history`);
     if (!res.ok) return;
     const data = await res.json();
     renderSessionList(data.sessions || []);
-  } catch (_) {
-    /* server chưa chạy */
-  }
+  } catch (_) {}
 }
 
 function renderSessionList(sessions) {
-  // Lấy danh sách session_id hiện tại trên DOM
   const existingItems = new Map();
   sessionList.querySelectorAll(".sess-item[data-sid]").forEach((el) => {
     existingItems.set(el.dataset.sid, el);
@@ -186,23 +195,19 @@ function renderSessionList(sessions) {
     return;
   }
 
-  // Xóa empty placeholder nếu có
   const empty = sessionList.querySelector(".sidebar-empty");
   if (empty) empty.remove();
 
   const newIds = new Set(sessions.map((s) => s.session_id));
 
-  // Xóa các item không còn tồn tại
   existingItems.forEach((el, sid) => {
     if (!newIds.has(sid)) el.remove();
   });
 
-  // Update hoặc tạo mới từng item — KHÔNG xóa toàn bộ innerHTML
   sessions.forEach((s, index) => {
     let item = existingItems.get(s.session_id);
 
     if (item) {
-      // Update item đã có: chỉ update text và class, không tạo lại listener
       item.className =
         "sess-item" + (s.session_id === currentSessionId ? " active" : "");
       const btn = item.querySelector(".sess-btn");
@@ -211,7 +216,6 @@ function renderSessionList(sessions) {
         btn.title = `${s.turn_count} lượt · ${s.updated_at}`;
       }
     } else {
-      // Tạo item mới
       item = document.createElement("div");
       item.className =
         "sess-item" + (s.session_id === currentSessionId ? " active" : "");
@@ -237,7 +241,6 @@ function renderSessionList(sessions) {
       sessionList.appendChild(item);
     }
 
-    // Đảm bảo thứ tự đúng
     if (sessionList.children[index] !== item) {
       sessionList.insertBefore(item, sessionList.children[index] || null);
     }
@@ -250,7 +253,6 @@ function confirmDelete(sessionId, title) {
     `Xoá "${title.length > 30 ? title.slice(0, 30) + "…" : title}"?`;
   modal.classList.add("open");
 
-  // Clone để xóa sạch listener cũ, tránh fire nhiều lần
   const yesBtn = document.getElementById("btn-confirm-yes");
   const noBtn = document.getElementById("btn-confirm-no");
   const newYes = yesBtn.cloneNode(true);
@@ -273,7 +275,6 @@ async function deleteSession(sessionId) {
       method: "DELETE",
     });
     if (!res.ok) throw new Error();
-    // Chỉ reset màn hình nếu đúng session đang xem bị xóa
     if (currentSessionId && currentSessionId === sessionId) {
       currentSessionId = null;
       showWelcome();
@@ -286,15 +287,8 @@ async function deleteSession(sessionId) {
 }
 
 async function loadSession(sessionId) {
-  console.log("loadSession called:", sessionId, "current:", currentSessionId);
-  console.trace();
-  // FIX: Không load lại nếu đang xem đúng session đó
   if (sessionId === currentSessionId) return;
-
-  // Stop any ongoing polling when switching conversations
-  stopPolling();
   isLoading = false;
-  sendBtn.disabled = false;
   removeLoading();
 
   try {
@@ -318,7 +312,6 @@ async function loadSession(sessionId) {
 }
 
 function showWelcome() {
-  console.trace("⚠️ showWelcome called — stack:");
   messagesEl.innerHTML = `
     <div class="welcome" id="welcome">
       <h2>VNSignMate Assistant</h2>
@@ -327,12 +320,8 @@ function showWelcome() {
 }
 
 document.getElementById("btn-new-chat").addEventListener("click", () => {
-  // Stop any ongoing polling when starting a new chat
-  stopPolling();
   isLoading = false;
-  sendBtn.disabled = false;
   removeLoading();
-
   currentSessionId = null;
   showWelcome();
   loadSessionList();
@@ -348,8 +337,8 @@ async function sendMessage() {
   appendMessage("user", text);
 
   const currentSessionIdBefore = currentSessionId;
+  const startTime = performance.now();
   isLoading = true;
-  sendBtn.disabled = true;
   appendLoadingIndicator();
 
   try {
@@ -362,136 +351,27 @@ async function sendMessage() {
       }),
     });
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `HTTP ${res.status}`);
+    }
 
-    // Backend now returns task_id immediately
-    currentTaskId = data.task_id;
+    const data = await res.json();
+    const elapsed = (performance.now() - startTime) / 1000;
+
     if (!currentSessionId) currentSessionId = data.session_id;
 
-    // Start polling for task completion
-    startPolling(currentTaskId);
+    replaceLoadingWithMessage(data.response, data.tools_used || [], elapsed);
 
-    // Chỉ reload sidebar nếu đây là tin nhắn đầu tiên (session mới có title)
-    // Tránh re-render sidebar không cần thiết gây văng màn hình
     const isFirstMessage = !currentSessionIdBefore;
     if (isFirstMessage) await loadSessionList();
-  } catch (_) {
-    removeLoading();
-    showToast("Lỗi kết nối. Kiểm tra FastAPI đang chạy tại port 8000.");
-    isLoading = false;
-    sendBtn.disabled = false;
-  }
-}
-
-function startPolling(taskId) {
-  // Clear any existing polling
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-  }
-
-  pollingInterval = setInterval(async () => {
-    try {
-      const res = await fetch(`${API}/chat/status/${taskId}`);
-      if (!res.ok) {
-        if (res.status === 404) {
-          stopPolling();
-          removeLoading();
-          showToast("Task not found");
-          return;
-        }
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const data = await res.json();
-
-      // Update loading indicator with progress
-      updateLoadingProgress(data.progress, data.current_step);
-
-      if (data.status === "completed") {
-        stopPolling();
-        const toolsUsed = Array.isArray(data.result?.tools_used) ? data.result.tools_used : [];
-        replaceLoadingWithMessage(data.result?.response || "", toolsUsed);
-        isLoading = false;
-        sendBtn.disabled = false;
-      } else if (data.status === "failed") {
-        stopPolling();
-        removeLoading();
-        showToast(`Lỗi: ${data.error || "Unknown error"}`);
-        isLoading = false;
-        sendBtn.disabled = false;
-      } else if (data.status === "cancelled") {
-        stopPolling();
-        const toolsUsed = Array.isArray(data.result?.tools_used) ? data.result.tools_used : [];
-        const response = data.result?.response || "";
-        const isPartial = data.result?.partial === true;
-        
-        if (response) {
-          // Show partial response with indicator
-          replaceLoadingWithMessage(response + (isPartial ? " ⚠️ (partial)" : ""), toolsUsed);
-        } else {
-          removeLoading();
-        }
-        showToast(isPartial ? "Generation cancelled - partial response saved" : "Generation cancelled");
-        isLoading = false;
-        sendBtn.disabled = false;
-      }
-    } catch (err) {
-      console.error("Polling error:", err);
-      // Don't stop polling on network errors, retry
-    }
-  }, 500); // Poll every 500ms
-}
-
-function stopPolling() {
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-    pollingInterval = null;
-  }
-  currentTaskId = null;
-}
-
-async function cancelCurrentTask() {
-  if (!currentTaskId) return;
-  
-  try {
-    const res = await fetch(`${API}/chat/cancel/${currentTaskId}`, {
-      method: "POST",
-    });
-    
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    
-    // The polling will pick up the cancelled status
-    showToast("Generation cancelled");
   } catch (err) {
-    console.error("Cancel error:", err);
-    showToast("Failed to cancel");
-  }
-}
-
-// Handle Escape key to cancel generation
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && isLoading && currentTaskId) {
-    cancelCurrentTask();
-  }
-});
-
-function updateLoadingProgress(progress, step) {
-  const row = document.getElementById("loading-row");
-  if (!row) return;
-
-  const indicator = row.querySelector(".msg-indicator");
-  if (indicator) {
-    // Update the progress text while preserving the cancel button
-    let progressEl = indicator.querySelector(".loading-progress");
-    if (!progressEl) {
-      progressEl = document.createElement("div");
-      progressEl.className = "loading-progress";
-      indicator.appendChild(progressEl);
-    }
-    // Only show step name, hide percentage
-    progressEl.textContent = step;
+    removeLoading();
+    showToast(
+      "Lỗi: " + err.message + ". Kiểm tra FastAPI đang chạy tại port 8000.",
+    );
+  } finally {
+    isLoading = false;
   }
 }
 

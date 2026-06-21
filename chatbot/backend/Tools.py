@@ -1,15 +1,12 @@
 import os
+import time
 import torch
-import asyncio
-import hashlib
-import json
 import logging
 from dotenv import load_dotenv
 from typing import Optional, Dict, List, Any
-from qdrant_client.async_qdrant_client import AsyncQdrantClient
-from sentence_transformers import SentenceTransformer
+import chromadb
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 import httpx
-import redis.asyncio as redis
 
 load_dotenv()
 logging.basicConfig(
@@ -18,248 +15,152 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+_CACHE_TTL = int(os.getenv('SEARCH_CACHE_TTL', '300'))
+_search_cache: Dict[str, dict] = {}
 
-def _env_bool(name: str, default: bool = False) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+def _get_cached(key: str) -> dict | None:
+    entry = _search_cache.get(key)
+    if entry and (time.time() - entry["time"]) < _CACHE_TTL:
+        logger.info(f"Web search cache HIT for: {key[:60]}...")
+        return entry["data"]
+    return None
+
+def _set_cache(key: str, data: dict):
+    _search_cache[key] = {"data": data, "time": time.time()}
+
+def _invalidate_cache():
+    now = time.time()
+    expired = [k for k, v in _search_cache.items() if (now - v["time"]) >= _CACHE_TTL]
+    for k in expired:
+        del _search_cache[k]
+    if expired:
+        logger.info(f"Cleared {len(expired)} expired cache entries")
 
 
 class Config:
-    QDRANT_URL: str = os.getenv('QDRANT_URL')
-    QDRANT_API_KEY: str = os.getenv('QDRANT_API_KEY')
-    COLLECTION_NAME: str = os.getenv('COLLECTION_NAME')
+    COLLECTION_NAME: str = os.getenv('COLLECTION_NAME', 'vsl_knowledge_base')
+    CHROMA_PATH: str = os.getenv('CHROMA_PATH', './chroma_db')
     EMBEDDING_MODEL: str = 'paraphrase-multilingual-MiniLM-L12-v2'
-    TOP_K: int = 3  # Reduced from 5 for lower latency
-    WEB_SEARCH_NUM: int = 5
-    USE_LLM_RERANK: bool = _env_bool("USE_LLM_RERANK", False)
+    TOP_K: int = 3
 
     SERPAPI_KEY: str = os.getenv('SERPAPI_KEY')
     LLAMA_SERVER_URL: str = os.getenv('LLAMA_SERVER_URL')
-    
-    # Redis
-    REDIS_URL: str = os.getenv('REDIS_URL', 'redis://localhost:6379')
-    CACHE_TTL: int = int(os.getenv('CACHE_TTL', '3600'))  # 1 hour
-    
-    # Timeouts
-    QDRANT_TIMEOUT: float = 10.0
+
     WEB_SEARCH_TIMEOUT: float = 10.0
     LLAMA_TIMEOUT: float = 30.0
-    
+
     DEVICE: str = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
-class QA_Retriever:
-    """Async Qdrant retriever with gRPC, connection pooling, and Redis caching."""
-    
-    def __init__(self, config: Config, llm_client=None):
+class ChromaRetriever:
+    def __init__(self, config: Config):
         self.config = config
-        self.llm = llm_client
-        # Async client with gRPC (faster than REST)
-        self.qdrant_client = AsyncQdrantClient(
-            url=config.QDRANT_URL,
-            api_key=config.QDRANT_API_KEY,
-            prefer_grpc=True,
-            timeout=config.QDRANT_TIMEOUT,
-        )
-        self.encoder = SentenceTransformer(
-            model_name_or_path=config.EMBEDDING_MODEL,
+        self.client = chromadb.PersistentClient(path=config.CHROMA_PATH)
+        self.embedding_func = SentenceTransformerEmbeddingFunction(
+            model_name=config.EMBEDDING_MODEL,
             device=config.DEVICE
         )
-        # Redis cache
-        self._redis: Optional[redis.Redis] = None
-        self._embed_cache: Dict[str, List[float]] = {}
-        self._embed_cache_max = 1000
-    
-    async def _get_redis(self) -> redis.Redis:
-        if self._redis is None:
-            self._redis = redis.from_url(self.config.REDIS_URL, decode_responses=True)
-        return self._redis
-    
-    def _get_embedding(self, text: str) -> List[float]:
-        """Get embedding with in-memory LRU cache."""
-        if text in self._embed_cache:
-            return self._embed_cache[text]
-        
-        emb = self.encoder.encode(text, normalize_embeddings=True).tolist()
-        if len(self._embed_cache) >= self._embed_cache_max:
-            self._embed_cache.pop(next(iter(self._embed_cache)))
-        self._embed_cache[text] = emb
-        return emb
-    
-    async def _get_embedding_async(self, text: str) -> List[float]:
-        """Get embedding with Redis + in-memory LRU cache for persistence across restarts."""
-        # Check in-memory cache first (fastest)
-        if text in self._embed_cache:
-            return self._embed_cache[text]
-        
-        # Check Redis cache
-        cache_key = f"embed:{hashlib.md5(text.encode()).hexdigest()}"
-        try:
-            r = await self._get_redis()
-            cached = await r.get(cache_key)
-            if cached:
-                emb = json.loads(cached)
-                # Populate in-memory cache
-                if len(self._embed_cache) >= self._embed_cache_max:
-                    self._embed_cache.pop(next(iter(self._embed_cache)))
-                self._embed_cache[text] = emb
-                logger.debug(f"Embedding cache HIT (Redis): {text[:50]}")
-                return emb
-        except Exception as e:
-            logger.warning(f"Redis embedding cache read error: {e}")
-        
-        # Compute embedding
-        emb = await asyncio.to_thread(self.encoder.encode, text, normalize_embeddings=True)
-        emb = emb.tolist()
-        
-        # Store in both caches
-        if len(self._embed_cache) >= self._embed_cache_max:
-            self._embed_cache.pop(next(iter(self._embed_cache)))
-        self._embed_cache[text] = emb
-        
-        try:
-            r = await self._get_redis()
-            await r.setex(cache_key, self.config.CACHE_TTL, json.dumps(emb))
-            logger.debug(f"Embedding cache SET (Redis): {text[:50]}")
-        except Exception as e:
-            logger.warning(f"Redis embedding cache write error: {e}")
-        
-        return emb
-    
-    async def _get_cached_result(self, cache_key: str) -> Optional[Dict]:
-        try:
-            r = await self._get_redis()
-            cached = await r.get(cache_key)
-            if cached:
-                logger.debug(f"Cache HIT: {cache_key[:50]}")
-                return json.loads(cached)
-        except Exception as e:
-            logger.warning(f"Redis cache read error: {e}")
-        return None
-    
-    async def _set_cached_result(self, cache_key: str, result: Dict) -> None:
-        try:
-            r = await self._get_redis()
-            await r.setex(cache_key, self.config.CACHE_TTL, json.dumps(result, default=str))
-            logger.debug(f"Cache SET: {cache_key[:50]}")
-        except Exception as e:
-            logger.warning(f"Redis cache write error: {e}")
-    
-    def _critique_is_rel(self, query: str, context: str) -> float:
-        if not self.llm or not self.config.USE_LLM_RERANK:
-            return 1.0
-        
-        prompt = f"""
-        Nhiệm vụ: Đánh giá mức độ liên quan (IsREL).
-        Câu hỏi: {query}
-        Tài liệu: {context}
-        
-        Trả về một số thực từ 0.0 đến 1.0 (1.0 là cực kỳ liên quan, 0.0 là không liên quan).
-        Chỉ trả về con số, không giải thích gì thêm.
-        """
-        try:
-            res = self.llm.invoke(prompt)
-            return float(res.strip())
-        except Exception:
-            return 0.5
-    
-    async def search(self, query: str, top_k: Optional[int] = None) -> Dict:
-        """Async search with Redis caching."""
+        self._collection = None
+
+    @property
+    def collection(self):
+        if self._collection is None:
+            try:
+                self._collection = self.client.get_collection(
+                    name=self.config.COLLECTION_NAME,
+                    embedding_function=self.embedding_func
+                )
+            except Exception as e:
+                logger.warning(f"Collection '{self.config.COLLECTION_NAME}' not found: {e}")
+                self._collection = None
+        return self._collection
+
+    def search(self, query: str, top_k: Optional[int] = None) -> Dict:
         k = top_k or self.config.TOP_K
-        cache_key = f"qa:{hashlib.md5(f'{query}:{k}'.encode()).hexdigest()}"
-        
-        # Try cache first
-        cached = await self._get_cached_result(cache_key)
-        if cached:
-            return cached
-        
+        col = self.collection
+        if not col:
+            return {
+                'context': 'Thư viện tri thức chưa được khởi tạo. Vui lòng chạy Create_vectorDB.py trước.',
+                'source': 'ChromaDB Error',
+                'results': [],
+                'top_score': 0.0
+            }
+
         try:
-            collection = self.config.COLLECTION_NAME
-            
-            # 1. Vector Search (Retrieve) - use async embedding with Redis cache
-            query_vector = await self._get_embedding_async(query)
-            
-            limit = k * 2 if self.config.USE_LLM_RERANK else k
-            raw_results = await self.qdrant_client.query_points(
-                collection_name=collection,
-                query=query_vector,
-                limit=limit,
+            results = col.query(
+                query_texts=[query],
+                n_results=k,
+                include=['documents', 'metadatas', 'distances']
             )
-            
-            # 2. Critique & Re-rank
+
+            if not results['documents'] or not results['documents'][0]:
+                return {
+                    'context': 'Không tìm thấy thông tin liên quan.',
+                    'source': self.config.COLLECTION_NAME,
+                    'results': [],
+                    'top_score': 0.0
+                }
+
             scored_results = []
-            for point in raw_results.points:
-                text = point.payload.get('text', 'N/A')
-                if self.config.USE_LLM_RERANK:
-                    rel_score = self._critique_is_rel(query, text)
-                    final_score = (point.score * 0.4) + (rel_score * 0.6)
-                else:
-                    rel_score = 1.0
-                    final_score = point.score
-                
+            for i, (doc, meta, dist) in enumerate(zip(
+                results['documents'][0],
+                results['metadatas'][0],
+                results['distances'][0]
+            )):
+                score = 1.0 - dist if dist <= 1.0 else 0.0
                 scored_results.append({
-                    'text': text,
-                    'source': point.payload.get('source', 'N/A'),
-                    'page': point.payload.get('page', 'N/A'),
-                    'score': final_score,
-                    'is_rel': rel_score
+                    'text': doc,
+                    'source': meta.get('source', 'N/A'),
+                    'page': meta.get('page', 'N/A'),
+                    'score': score,
                 })
-            
+
             scored_results.sort(key=lambda x: x['score'], reverse=True)
             top_results = scored_results[:k]
-            
+
             context_parts = [
-                f"[{i+1}] Score: {r['score']:.3f} | IsREL: {r['is_rel']} | Source: {r['source']}\n{r['text']}"
+                f"[{i+1}] Score: {r['score']:.3f} | Source: {r['source']}\n{r['text']}"
                 for i, r in enumerate(top_results)
             ]
-            
-            result = {
+
+            return {
                 'context': '\n\n'.join(context_parts),
-                'source': collection,
+                'source': self.config.COLLECTION_NAME,
                 'results': top_results,
                 'top_score': top_results[0]['score'] if top_results else 0.0
             }
-            
-            # Cache the result
-            await self._set_cached_result(cache_key, result)
-            return result
-            
+
         except Exception as e:
-            logger.error(f'QA search ERROR: {str(e)}')
+            logger.error(f'ChromaDB search error: {str(e)}')
             return {
-                'context': f'Error retrieving information: {str(e)}',
+                'context': f'Lỗi truy xuất thông tin: {str(e)}',
                 'source': 'Error',
                 'results': [],
                 'top_score': 0.0
             }
-    
-    async def close(self):
-        """Close connections."""
-        if self._redis:
-            await self._redis.close()
-        await self.qdrant_client.close()
 
 
 class WebSearcher:
-    """Async web searcher using httpx with timeout."""
-    
     def __init__(self, config: Config = Config()):
         self.config = config
         self.api_key = config.SERPAPI_KEY
         self.url = "https://serpapi.com/search"
         self._client: Optional[httpx.AsyncClient] = None
-        
+
         if not self.api_key:
             logger.warning("SERPAPI_KEY not found in .env file")
-    
+
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(timeout=self.config.WEB_SEARCH_TIMEOUT)
         return self._client
-    
+
     async def search(self, query: str, add_medical_context: bool = True) -> Dict:
+        cache_key = f"{query}::med={add_medical_context}"
+        cached = _get_cached(cache_key)
+        if cached:
+            return cached
+
         if not self.api_key:
             return {
                 "context": "SerpAPI key not configured. Add SERPAPI_KEY to .env file.",
@@ -267,50 +168,56 @@ class WebSearcher:
                 "num_results": 0,
                 "results": []
             }
-        
+
         try:
             search_query = f"{query} medical health" if add_medical_context else query
-            
+
             params = {
                 "q": search_query,
                 "api_key": self.api_key,
-                "num": self.config.WEB_SEARCH_NUM,
+                "num": 5,
                 "gl": "vn",
                 "hl": "en"
             }
-            
+
             client = await self._get_client()
             response = await client.get(self.url, params=params)
             response.raise_for_status()
             data = response.json()
-            
+
             results = []
             results_details = []
-            
-            for idx, item in enumerate(data.get("organic_results", [])[:self.config.WEB_SEARCH_NUM], 1):
+
+            for idx, item in enumerate(data.get("organic_results", [])[:5], 1):
                 result_text = (
                     f"[{idx}] Title: {item.get('title')}\n"
                     f"Source: {item.get('link')}\n"
                     f"Summary: {item.get('snippet')}"
                 )
                 results.append(result_text)
-                
+
                 results_details.append({
                     'title': item.get('title'),
                     'link': item.get('link'),
                     'snippet': item.get('snippet'),
                     'position': idx
                 })
-            
+
             context = "\n\n".join(results) if results else "No web results found"
-            
-            return {
+
+            result = {
                 "context": context,
                 "source": "Web Search (SerpAPI)",
                 "num_results": len(results),
                 "results": results_details
             }
-            
+
+            _set_cache(cache_key, result)
+            _invalidate_cache()
+            logger.info(f"Web search cached for: {query[:60]}...")
+
+            return result
+
         except httpx.TimeoutException:
             logger.error("Web search timeout")
             return {
@@ -327,24 +234,22 @@ class WebSearcher:
                 "num_results": 0,
                 "results": []
             }
-    
+
     async def close(self):
         if self._client and not self._client.is_closed:
             await self._client.aclose()
 
 
 class VSL_Restructurer:
-    """Async VSL restructure using httpx with timeout."""
-    
     def __init__(self, config: Config = Config()):
         self.config = config
         self._client: Optional[httpx.AsyncClient] = None
-    
+
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(timeout=self.config.LLAMA_TIMEOUT)
         return self._client
-    
+
     async def restruct(self, text: str) -> Dict:
         if not self.config.LLAMA_SERVER_URL:
             logger.warning("LLAMA_SERVER_URL not configured")
@@ -354,7 +259,7 @@ class VSL_Restructurer:
                 "num_results": 0,
                 "original": text
             }
-        
+
         if not text or not text.strip():
             return {
                 "context": "Văn bản đầu vào trống.",
@@ -362,7 +267,7 @@ class VSL_Restructurer:
                 "num_results": 0,
                 "original": text
             }
-        
+
         try:
             payload = {
                 "messages": [
@@ -378,7 +283,7 @@ class VSL_Restructurer:
                 "temperature": 0,
                 "max_tokens": 128
             }
-            
+
             logger.info(f"Calling LLaMA server at {self.config.LLAMA_SERVER_URL} for VSL restruct")
             client = await self._get_client()
             r = await client.post(
@@ -388,17 +293,17 @@ class VSL_Restructurer:
             )
             r.raise_for_status()
             data = r.json()
-            
+
             result = data["choices"][0]["message"]["content"].strip()
             logger.info(f"VSL restruct successful: '{text[:50]}...' -> '{result[:50]}...'")
-            
+
             return {
                 "context": result,
                 "source": "VSL Translation (LLaMA)",
                 "num_results": 1,
                 "original": text
             }
-            
+
         except httpx.ConnectError:
             msg = f"Không thể kết nối LLaMA server tại {self.config.LLAMA_SERVER_URL}. Kiểm tra server đã chạy chưa."
             logger.error(msg)
@@ -434,7 +339,7 @@ class VSL_Restructurer:
                 "num_results": 0,
                 "original": text
             }
-    
+
     async def close(self):
         if self._client and not self._client.is_closed:
             await self._client.aclose()
@@ -442,7 +347,7 @@ class VSL_Restructurer:
 
 # Singleton instances
 _config_instance: Optional[Config] = None
-_qa_retriever_instance: Optional[QA_Retriever] = None
+_chroma_retriever_instance: Optional[ChromaRetriever] = None
 _web_searcher_instance: Optional[WebSearcher] = None
 _vsl_restructurer_instance: Optional[VSL_Restructurer] = None
 
@@ -454,11 +359,11 @@ def get_config() -> Config:
     return _config_instance
 
 
-async def get_qa_retriever_instance() -> QA_Retriever:
-    global _qa_retriever_instance
-    if _qa_retriever_instance is None:
-        _qa_retriever_instance = QA_Retriever(get_config())
-    return _qa_retriever_instance
+def get_chroma_retriever() -> ChromaRetriever:
+    global _chroma_retriever_instance
+    if _chroma_retriever_instance is None:
+        _chroma_retriever_instance = ChromaRetriever(get_config())
+    return _chroma_retriever_instance
 
 
 async def get_web_searcher_instance() -> WebSearcher:
@@ -475,11 +380,46 @@ async def get_vsl_restructurer_instance() -> VSL_Restructurer:
     return _vsl_restructurer_instance
 
 
-# Tool functions (async)
-async def get_qa_retriever(query: str, top_k: Optional[int] = None, llm_client=None) -> Dict:
-    retriever = await get_qa_retriever_instance()
-    retriever.llm = llm_client
-    return await retriever.search(query, top_k=top_k)
+def preload():
+    logger.info("Preloading ChromaDB + embedding model...")
+    try:
+        retriever = get_chroma_retriever()
+        col = retriever.collection
+        if col is not None:
+            _ = col.query(query_texts=["test"], n_results=1)
+            count = col.count()
+            logger.info(f"ChromaDB sẵn sàng ({count} documents trong collection)")
+        else:
+            logger.warning("ChromaDB collection chưa được tạo. Chạy Create_vectorDB.py trước.")
+    except Exception as e:
+        logger.error(f"Lỗi preload ChromaDB: {e}")
+        logger.warning("ChromaDB sẽ load lazy khi có request đầu tiên.")
+
+
+async def cleanup():
+    global _web_searcher_instance, _vsl_restructurer_instance
+    logger.info("Tools cleanup...")
+
+    if _web_searcher_instance is not None:
+        try:
+            await _web_searcher_instance.close()
+        except Exception as e:
+            logger.warning(f"Lỗi cleanup web searcher: {e}")
+        _web_searcher_instance = None
+
+    if _vsl_restructurer_instance is not None:
+        try:
+            await _vsl_restructurer_instance.close()
+        except Exception as e:
+            logger.warning(f"Lỗi cleanup vsl restructurer: {e}")
+        _vsl_restructurer_instance = None
+
+    logger.info("Tools cleanup done.")
+
+
+def get_qa_retriever(query: str, top_k: Optional[int] = None) -> Dict:
+    retriever = get_chroma_retriever()
+    return retriever.search(query, top_k=top_k)
 
 
 async def get_web_search(query: str) -> Dict:
@@ -492,31 +432,26 @@ async def vsl_restruct(text: str) -> Dict:
     return await restructurer.restruct(text)
 
 
-# Sync wrappers for backward compatibility (used by System.py call_tool)
-def get_qa_retriever_sync(query: str, top_k: Optional[int] = None, llm_client=None) -> Dict:
-    """Sync wrapper for backward compatibility."""
-    return asyncio.run(get_qa_retriever(query, top_k, llm_client))
-
-
 def get_web_search_sync(query: str) -> Dict:
+    import asyncio
     return asyncio.run(get_web_search(query))
 
 
 def vsl_restruct_sync(text: str) -> Dict:
+    import asyncio
     return asyncio.run(vsl_restruct(text))
 
 
 TOOLS_MAPPING_TO_FUNC = {
-    "get_qa_retriever": get_qa_retriever_sync,
+    "get_qa_retriever": get_qa_retriever,
     "get_web_search": get_web_search_sync,
-    "vsl_restruct": vsl_restruct_sync
+    "vsl_restruct": vsl_restruct_sync,
 }
 
-# Async versions for direct use
 TOOLS_MAPPING_TO_FUNC_ASYNC = {
     "get_qa_retriever": get_qa_retriever,
     "get_web_search": get_web_search,
-    "vsl_restruct": vsl_restruct
+    "vsl_restruct": vsl_restruct,
 }
 
 AGENT_TOOLS_LIST = {
@@ -524,8 +459,8 @@ AGENT_TOOLS_LIST = {
         {
             'name': 'get_qa_retriever',
             'description': (
-                'Tìm kiếm và trích xuất thông tin liên quan từ cơ sở tri thức PDF nội bộ. '
-                'Sử dụng khi câu hỏi liên quan đến kiến thức đã được lưu trong tài liệu.'
+                'Tìm kiếm và trích xuất thông tin liên quan từ cơ sở tri thức PDF nội bộ (ChromaDB local). '
+                'Sử dụng khi câu hỏi liên quan đến kiến thức đã được lưu trong tài liệu VSL.'
             ),
             'args': 'query (str)'
         },
@@ -539,7 +474,7 @@ AGENT_TOOLS_LIST = {
         },
         {
             "name": "vsl_restruct",
-            "description": "Tái cấu trúc câu tiếng Việt theo ngữ pháp VSL",
+            "description": "Tái cấu trúc câu tiếng Việt theo ngữ pháp VSL (Ngôn ngữ ký hiệu Việt Nam)",
             "args": "text (str)"
         }
     ]

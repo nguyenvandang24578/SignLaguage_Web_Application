@@ -61,14 +61,12 @@ body {
   scrollbar-color: var(--border-strong) transparent;
 }
 
-/* ── APP LAYOUT ── */
 .app {
   display: flex;
   height: 100vh;
   overflow: hidden;
 }
 
-/* ── SIDEBAR ── */
 .sidebar {
   width: 320px;
   background: var(--surface);
@@ -218,7 +216,6 @@ body {
   height: 14px;
 }
 
-/* ── MAIN ── */
 .main {
   flex: 1;
   display: flex;
@@ -262,7 +259,6 @@ body {
   color: var(--text-muted);
 }
 
-/* ── MESSAGE ROWS ── */
 .msg-row {
   max-width: 720px;
   margin: 0 auto;
@@ -276,7 +272,6 @@ body {
   flex-direction: row-reverse;
 }
 
-/* ── AVATAR ── */
 .msg-avatar {
   width: 32px;
   height: 32px;
@@ -294,7 +289,6 @@ body {
   display: block;
 }
 
-/* ── MESSAGE CONTENT ── */
 .msg-content {
   flex: 1;
   padding-top: 4px;
@@ -313,6 +307,16 @@ body {
   margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.msg-time {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-left: 8px;
+  opacity: 0.75;
 }
 
 .msg-text {
@@ -338,10 +342,9 @@ body {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  margin-bottom: 6px;
+  margin-top: 8px;
 }
 
-/* Bubble cho user */
 .msg-row.user-row .msg-text {
   background: linear-gradient(135deg, #ddeaf7 0%, var(--blue-light) 100%);
   border: 1.5px solid var(--blue-mid);
@@ -353,7 +356,6 @@ body {
   box-shadow: var(--shadow-xs);
 }
 
-/* ── INPUT AREA ── */
 .input-area {
   padding: clamp(16px, 2vw, 22px) clamp(20px, 3vw, 28px) clamp(20px, 3vw, 28px);
   flex-shrink: 0;
@@ -432,7 +434,6 @@ textarea::placeholder {
   height: 14px;
 }
 
-/* ── CANCEL BUTTON (in input area) ── */
 .cancel-btn {
   width: clamp(34px, 3vw, 40px);
   height: clamp(34px, 3vw, 40px);
@@ -460,7 +461,6 @@ textarea::placeholder {
   height: 14px;
 }
 
-/* ── LOADING DOTS ── */
 .dot-anim {
   display: flex;
   gap: 4px;
@@ -493,7 +493,6 @@ textarea::placeholder {
   }
 }
 
-/* ── LOADING PROGRESS ── */
 .loading-progress {
   font-size: 11px;
   color: var(--text-faint);
@@ -502,7 +501,6 @@ textarea::placeholder {
   text-align: center;
 }
 
-/* ── TOAST ── */
 .toast {
   position: fixed;
   bottom: 90px;
