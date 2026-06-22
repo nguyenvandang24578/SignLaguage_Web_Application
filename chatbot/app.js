@@ -131,49 +131,6 @@ function removeLoading() {
   sendBtn.disabled = false;
 }
 
-function replaceLoadingWithMessage(text, toolsUsed = [], elapsed = null) {
-  const row = document.getElementById("loading-row");
-  if (!row) {
-    appendMessage("assistant", text, toolsUsed, elapsed);
-    return;
-  }
-
-  row.removeAttribute("id");
-  const content = row.querySelector(".msg-content");
-  if (!content) {
-    appendMessage("assistant", text, toolsUsed, elapsed);
-    return;
-  }
-
-  const indicator = content.querySelector(".msg-indicator");
-  if (indicator) indicator.remove();
-
-  const sender = content.querySelector(".msg-sender");
-  if (sender && elapsed !== null) {
-    const oldTime = sender.querySelector(".msg-time");
-    if (oldTime) oldTime.remove();
-    const timeSpan = document.createElement("span");
-    timeSpan.className = "msg-time";
-    timeSpan.textContent = `${elapsed.toFixed(1)}s`;
-    sender.appendChild(timeSpan);
-  }
-
-  const msgText = document.createElement("div");
-  msgText.className = "msg-text";
-  msgText.textContent = text;
-  content.appendChild(msgText);
-
-  if (Array.isArray(toolsUsed) && toolsUsed.length > 0) {
-    const tools = document.createElement("div");
-    tools.className = "msg-tools";
-    tools.textContent = `🔧${toolsUsed.join(", ")}`;
-    content.appendChild(tools);
-  }
-
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-  sendBtn.disabled = false;
-}
-
 async function loadSessionList() {
   try {
     const res = await fetch(`${API}/history`);
@@ -289,6 +246,9 @@ async function deleteSession(sessionId) {
 async function loadSession(sessionId) {
   if (sessionId === currentSessionId) return;
   isLoading = false;
+  if (currentAbortController) {
+    currentAbortController.abort();
+  }
   removeLoading();
 
   try {
@@ -321,11 +281,91 @@ function showWelcome() {
 
 document.getElementById("btn-new-chat").addEventListener("click", () => {
   isLoading = false;
+  if (currentAbortController) {
+    currentAbortController.abort();
+  }
   removeLoading();
   currentSessionId = null;
   showWelcome();
   loadSessionList();
 });
+
+let currentAbortController = null;
+
+// ─── Streaming message helpers ───────────────────────────────
+
+function createBotMessageContainer() {
+  hideWelcome();
+
+  const row = document.createElement("div");
+  row.className = "msg-row";
+  row.id = "streaming-row";
+
+  const avatar = makeAvatar("assistant");
+
+  const content = document.createElement("div");
+  content.className = "msg-content";
+
+  const sender = document.createElement("div");
+  sender.className = "msg-sender";
+  sender.textContent = "Bot";
+  content.appendChild(sender);
+
+  const msgText = document.createElement("div");
+  msgText.className = "msg-text";
+  msgText.id = "streaming-text";
+  content.appendChild(msgText);
+
+  row.appendChild(avatar);
+  row.appendChild(content);
+  messagesEl.appendChild(row);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  sendBtn.disabled = true;
+  return { row, msgText };
+}
+
+function finalizeBotMessage(sessionId, toolsUsed, elapsed) {
+  const row = document.getElementById("streaming-row");
+  if (!row) return;
+
+  row.removeAttribute("id");
+  const textEl = row.querySelector("#streaming-text");
+  if (textEl) textEl.removeAttribute("id");
+
+  // Add elapsed time
+  const sender = row.querySelector(".msg-sender");
+  if (sender && elapsed !== null) {
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "msg-time";
+    timeSpan.textContent = `${elapsed.toFixed(1)}s`;
+    sender.appendChild(timeSpan);
+  }
+
+  // Add tools used
+  if (Array.isArray(toolsUsed) && toolsUsed.length > 0) {
+    const content = row.querySelector(".msg-content");
+    const tools = document.createElement("div");
+    tools.className = "msg-tools";
+    tools.textContent = `${toolsUsed.join(", ")}`;
+    content.appendChild(tools);
+  }
+
+  if (!currentSessionId && sessionId) {
+    currentSessionId = sessionId;
+  }
+
+  sendBtn.disabled = false;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function updateStreamingText(text) {
+  const el = document.getElementById("streaming-text");
+  if (el) {
+    el.textContent = text;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+}
 
 async function sendMessage() {
   if (isLoading) return;
@@ -339,16 +379,43 @@ async function sendMessage() {
   const currentSessionIdBefore = currentSessionId;
   const startTime = performance.now();
   isLoading = true;
+
+  // Replace loading dots with a real streaming container
   appendLoadingIndicator();
 
+  // ── Cancel / Abort controller ──────────────────────────
+  if (currentAbortController) {
+    currentAbortController.abort();
+  }
+  currentAbortController = new AbortController();
+  const controller = currentAbortController;
+
+  const sendParent = sendBtn.parentElement;
+  let cancelBtn = document.getElementById("cancel-stream-btn");
+  if (!cancelBtn) {
+    cancelBtn = document.createElement("button");
+    cancelBtn.id = "cancel-stream-btn";
+    cancelBtn.className = "cancel-btn";
+    cancelBtn.title = "Dừng";
+    cancelBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`;
+    // Single persistent listener — always aborts the *current* controller
+    cancelBtn.addEventListener("click", () => {
+      if (currentAbortController) currentAbortController.abort();
+    });
+    sendParent.appendChild(cancelBtn);
+  }
+  cancelBtn.style.display = "flex";
+  sendBtn.style.display = "none";
+
   try {
-    const res = await fetch(`${API}/chat`, {
+    const res = await fetch(`${API}/chat/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: text,
         session_id: currentSessionId || undefined,
       }),
+      signal: controller.signal,
     });
 
     if (!res.ok) {
@@ -356,21 +423,106 @@ async function sendMessage() {
       throw new Error(errData.detail || `HTTP ${res.status}`);
     }
 
-    const data = await res.json();
+    // Remove loading indicator, create real streaming container
+    removeLoading();
+    const { msgText } = createBotMessageContainer();
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullResponse = "";
+    let tempSessionId = null;
+    let tempTools = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Parse SSE events: "data: {...}\n\n"
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || ""; // keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const jsonStr = line.slice(6).trim();
+        if (!jsonStr) continue;
+
+        try {
+          const event = JSON.parse(jsonStr);
+
+          switch (event.type) {
+            case "token":
+              fullResponse += event.content;
+              updateStreamingText(fullResponse);
+              break;
+            case "info":
+              // Optionally: show a small status indicator
+              break;
+            case "done":
+              tempSessionId = event.session_id || null;
+              tempTools = event.tools_used || [];
+              break;
+            case "error":
+              throw new Error(event.content);
+          }
+        } catch (parseErr) {
+          if (parseErr.message !== "Unexpected end of JSON input") {
+            console.warn("SSE parse error:", parseErr);
+          }
+        }
+      }
+    }
+
     const elapsed = (performance.now() - startTime) / 1000;
 
-    if (!currentSessionId) currentSessionId = data.session_id;
-
-    replaceLoadingWithMessage(data.response, data.tools_used || [], elapsed);
+    finalizeBotMessage(tempSessionId, tempTools, elapsed);
 
     const isFirstMessage = !currentSessionIdBefore;
-    if (isFirstMessage) await loadSessionList();
+    if (isFirstMessage && tempSessionId) {
+      currentSessionId = tempSessionId;
+      await loadSessionList();
+    }
   } catch (err) {
-    removeLoading();
-    showToast(
-      "Lỗi: " + err.message + ". Kiểm tra FastAPI đang chạy tại port 8000.",
-    );
+    if (err.name === "AbortError") {
+      // User cancelled — keep whatever we streamed so far
+      const textEl = document.getElementById("streaming-text");
+      if (textEl && textEl.textContent.trim()) {
+        // If we have partial content, keep it
+        finalizeBotMessage(null, [], (performance.now() - startTime) / 1000);
+      } else {
+        // Replace loading dots with a cancelled message
+        removeLoading();
+        const { msgText } = createBotMessageContainer();
+        msgText.textContent = "\u0110\xe3 d\u1eebng";
+        msgText.style.opacity = "0.5";
+        finalizeBotMessage(null, [], (performance.now() - startTime) / 1000);
+      }
+    } else {
+      removeLoading();
+      // If streaming container already exists, reuse it
+      const existingText = document.getElementById("streaming-text");
+      if (existingText) {
+        existingText.textContent += "\n\n[L\u1ed7i: " + err.message + "]";
+        existingText.style.color = "#e74c3c";
+        finalizeBotMessage(null, [], (performance.now() - startTime) / 1000);
+      } else {
+        const { msgText } = createBotMessageContainer();
+        msgText.textContent = "L\u1ed7i: " + err.message;
+        msgText.style.color = "#e74c3c";
+        finalizeBotMessage(null, [], (performance.now() - startTime) / 1000);
+      }
+    }
   } finally {
+    // Clean up abort controller
+    if (currentAbortController === controller) {
+      currentAbortController = null;
+    }
+    // Restore send button, hide cancel button
+    const cancelBtnEl = document.getElementById("cancel-stream-btn");
+    if (cancelBtnEl) cancelBtnEl.style.display = "none";
+    sendBtn.style.display = "flex";
     isLoading = false;
   }
 }

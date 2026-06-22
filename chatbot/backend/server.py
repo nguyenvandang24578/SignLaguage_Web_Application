@@ -3,11 +3,10 @@ import uvicorn
 import html
 import json
 import logging
-from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 import System
@@ -71,10 +70,6 @@ class ChatResponse(BaseModel):
     tools_used: list[str] = Field(default_factory=list)
 
 
-class ErrorResponse(BaseModel):
-    detail: str
-
-
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_endpoint(req: ChatRequest):
     if req.session_id:
@@ -135,8 +130,6 @@ async def chat_stream(req: ChatRequest):
 
     async def generate():
         try:
-            yield f"data: {json.dumps({'type': 'info', 'content': 'Đang phân tích câu hỏi...'})}\n\n"
-
             full_response = ""
             async for event in System.run_query_streaming(
                 query=req.message,
@@ -166,7 +159,15 @@ async def chat_stream(req: ChatRequest):
             logger.error(f"Streaming error: {e}")
             yield f"data: {json.dumps({'type': 'error', 'content': 'Lỗi xử lý: vui lòng thử lại'})}\n\n"
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/api/history")

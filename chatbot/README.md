@@ -14,22 +14,14 @@ bash run_servers.sh
 
 ---
 
-**_Notie: Create `.env` before running server.py and run llama_server_**
+**_Note: Create `.env` before running server.py**
 
-```python
-GEMINI_API_KEY=AIzaSyDZBx_EZ_nSnKB4XzptGfEsUjhSMp2tfnM
-#AIzaSyA8HO_uEcABU7n9j-fe8fZOXN34Oj5myzc
-#AIzaSyCi-4_MvBZVHo35PbAh4ZkrndwG_BxDNzM
+Copy `.env.example` to `.env` and fill in your keys:
 
-SERPAPI_KEY=47c370eb07497ca83884ae0aa86899c0c34e2696dc2a828566a2423616b1aec2
-
-QDRANT_URL=https://80b1c91f-137c-4044-ac1c-2be8daeeaafe.eu-west-2-0.aws.cloud.qdrant.io
-QDRANT_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.2fOU9CYvBXy8Ye96VVcJPimMNwuhV5S5vnlCT_z07TU
-
-COLLECTION_NAME=vsl_knowledge_base
-
-LLAMA_SERVER_URL=http://localhost:8080/v1/chat/completions
-USE_LLM_RERANK=false
-MAX_OUTPUT_TOKENS=1024
-MAX_RETRIES=3
+```bash
+cp .env.example .env
 ```
+
+Required environment variables:
+- `OPENAI_API_KEY` - Your OpenAI API key
+- `SERPAPI_KEY` - (Optional) For web search

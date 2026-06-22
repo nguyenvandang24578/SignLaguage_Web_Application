@@ -2,23 +2,19 @@ import aiosqlite
 import json
 import uuid
 import os
+import asyncio
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from contextlib import asynccontextmanager
+from typing import Optional
 
 BACKEND_ROOT = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BACKEND_ROOT, "data", "chat.db")
 
-_pool: Optional[aiosqlite.Connection] = None
-_pool_lock = None
+_pool_lock = asyncio.Lock()
+_pool = None
 
 
-async def _get_pool() -> aiosqlite.Connection:
-    global _pool, _pool_lock
-    import asyncio
-    if _pool_lock is None:
-        _pool_lock = asyncio.Lock()
-    
+async def _get_pool():
+    global _pool
     async with _pool_lock:
         if _pool is None:
             os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -150,29 +146,3 @@ async def delete_session(session_id: str) -> bool:
     return cursor.rowcount > 0
 
 
-async def select_or_create_session() -> dict:
-    sessions = await list_sessions()
-    if sessions:
-        return await load_session(sessions[0]["session_id"])
-    return await create_session()
-
-
-import asyncio
-
-def create_session_sync() -> dict:
-    return asyncio.run(create_session())
-
-def load_session_sync(session_id: str) -> Optional[dict]:
-    return asyncio.run(load_session(session_id))
-
-def append_messages_sync(session: dict, user_query: str, bot_response: str) -> dict:
-    return asyncio.run(append_messages(session, user_query, bot_response))
-
-def list_sessions_sync() -> list[dict]:
-    return asyncio.run(list_sessions())
-
-def delete_session_sync(session_id: str) -> bool:
-    return asyncio.run(delete_session(session_id))
-
-def select_or_create_session_sync() -> dict:
-    return asyncio.run(select_or_create_session())

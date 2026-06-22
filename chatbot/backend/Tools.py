@@ -9,10 +9,6 @@ from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunct
 import httpx
 
 load_dotenv()
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 _CACHE_TTL = int(os.getenv('SEARCH_CACHE_TTL', '300'))
@@ -155,8 +151,8 @@ class WebSearcher:
             self._client = httpx.AsyncClient(timeout=self.config.WEB_SEARCH_TIMEOUT)
         return self._client
 
-    async def search(self, query: str, add_medical_context: bool = True) -> Dict:
-        cache_key = f"{query}::med={add_medical_context}"
+    async def search(self, query: str) -> Dict:
+        cache_key = query.strip().lower()
         cached = _get_cached(cache_key)
         if cached:
             return cached
@@ -170,10 +166,8 @@ class WebSearcher:
             }
 
         try:
-            search_query = f"{query} medical health" if add_medical_context else query
-
             params = {
-                "q": search_query,
+                "q": query,
                 "api_key": self.api_key,
                 "num": 5,
                 "gl": "vn",
@@ -271,17 +265,10 @@ class VSL_Restructurer:
         try:
             payload = {
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": "Bạn là một chuyên gia ngôn ngữ, có thể tái cấu trúc câu từ ngôn ngữ nói Tiếng Việt thành cấu trúc câu Ngôn ngữ ký hiệu Việt Nam, hãy chuyển đổi câu sau:"
-                    },
-                    {
-                        "role": "user",
-                        "content": text.strip()
-                    }
+                    {"role": "user", "content": text.strip()}
                 ],
                 "temperature": 0,
-                "max_tokens": 128
+                "max_tokens": 256
             }
 
             logger.info(f"Calling LLaMA server at {self.config.LLAMA_SERVER_URL} for VSL restruct")
@@ -432,50 +419,8 @@ async def vsl_restruct(text: str) -> Dict:
     return await restructurer.restruct(text)
 
 
-def get_web_search_sync(query: str) -> Dict:
-    import asyncio
-    return asyncio.run(get_web_search(query))
-
-
-def vsl_restruct_sync(text: str) -> Dict:
-    import asyncio
-    return asyncio.run(vsl_restruct(text))
-
-
-TOOLS_MAPPING_TO_FUNC = {
-    "get_qa_retriever": get_qa_retriever,
-    "get_web_search": get_web_search_sync,
-    "vsl_restruct": vsl_restruct_sync,
-}
-
 TOOLS_MAPPING_TO_FUNC_ASYNC = {
     "get_qa_retriever": get_qa_retriever,
     "get_web_search": get_web_search,
     "vsl_restruct": vsl_restruct,
-}
-
-AGENT_TOOLS_LIST = {
-    'TOOLS': [
-        {
-            'name': 'get_qa_retriever',
-            'description': (
-                'Tìm kiếm và trích xuất thông tin liên quan từ cơ sở tri thức PDF nội bộ (ChromaDB local). '
-                'Sử dụng khi câu hỏi liên quan đến kiến thức đã được lưu trong tài liệu VSL.'
-            ),
-            'args': 'query (str)'
-        },
-        {
-            'name': 'get_web_search',
-            'description': (
-                'Tìm kiếm thông tin trên internet. '
-                'Sử dụng khi câu hỏi cần thông tin mới, cập nhật, hoặc không có trong tài liệu nội bộ.'
-            ),
-            'args': 'query (str)'
-        },
-        {
-            "name": "vsl_restruct",
-            "description": "Tái cấu trúc câu tiếng Việt theo ngữ pháp VSL (Ngôn ngữ ký hiệu Việt Nam)",
-            "args": "text (str)"
-        }
-    ]
 }
