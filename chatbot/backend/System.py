@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 class Config:
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-    OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://api.vilao.ai/v1')
-    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'ts/gpt-5.4-mini')
+    OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
     MAX_OUTPUT_TOKENS = int(os.getenv('MAX_OUTPUT_TOKENS', '512'))
     LLM_TIMEOUT = float(os.getenv('LLM_TIMEOUT', '30.0'))
     MAX_CONTEXT_TURNS = int(os.getenv('MAX_CONTEXT_TURNS', '3'))
@@ -97,11 +97,11 @@ SYSTEM_PROMPT = (
     "- KHÔNG tự ý trả lời từ kiến thức riêng nếu có công cụ phù hợp\n"
     "- Nếu không biết, hãy dùng công cụ thay vì trả lời bừa.\n\n"
     "ĐỊNH DẠNG TRẢ LỜI:\n"
-    "- Trả lời ngắn gọn, tự nhiên, chỉ dùng markdown tối thiểu.\n"
+    "- Trả lời chi tiết, đầy đủ thông tin, tự nhiên như đang trò chuyện.\n"
     "- KHÔNG dùng ký tự đặc biệt như **, ###, --- trong câu trả lời.\n"
     "- Nếu liệt kê, dùng dấu gạch đầu dòng đơn giản (-) hoặc số (1. 2. 3.).\n"
     "- KHÔNG thêm tiêu đề, KHÔNG thêm ghi chú kiểu (lưu ý, chú thích).\n"
-    "- Trả lời như đang chat tự nhiên, không format cầu kỳ."
+    "- Trả lời như đang chat tự nhiên, không format cầu kỳ, nhưng phải đầy đủ ý và có chiều sâu."
 )
 
 TOOL_FUNCS = Tools.TOOLS_MAPPING_TO_FUNC_ASYNC
@@ -150,7 +150,7 @@ async def run_query(query: str, conversation_history: list = None) -> dict:
             messages=messages,
             tools=TOOL_SCHEMAS,
             tool_choice="auto",
-            temperature=0.3,
+            temperature=0.7,
             max_tokens=config.MAX_OUTPUT_TOKENS,
         )
 
@@ -183,7 +183,7 @@ async def run_query(query: str, conversation_history: list = None) -> dict:
             response = client.chat.completions.create(
                 model=config.OPENAI_MODEL,
                 messages=messages,
-                temperature=0.3,
+                temperature=0.7,
                 max_tokens=config.MAX_OUTPUT_TOKENS,
             )
             final_answer = response.choices[0].message.content or ""
@@ -212,7 +212,7 @@ async def run_query_streaming(query: str, conversation_history: list = None):
             messages=messages,
             tools=TOOL_SCHEMAS,
             tool_choice="auto",
-            temperature=0.3,
+            temperature=0.7,
             max_tokens=config.MAX_OUTPUT_TOKENS,
         )
 
@@ -248,7 +248,7 @@ async def run_query_streaming(query: str, conversation_history: list = None):
             stream = client.chat.completions.create(
                 model=config.OPENAI_MODEL,
                 messages=messages,
-                temperature=0.3,
+                temperature=0.7,
                 max_tokens=config.MAX_OUTPUT_TOKENS,
                 stream=True,
             )

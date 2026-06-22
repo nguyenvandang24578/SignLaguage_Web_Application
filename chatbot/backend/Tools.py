@@ -41,7 +41,7 @@ class Config:
     COLLECTION_NAME: str = os.getenv('COLLECTION_NAME', 'vsl_knowledge_base')
     CHROMA_PATH: str = os.getenv('CHROMA_PATH', './chroma_db')
     EMBEDDING_MODEL: str = 'paraphrase-multilingual-MiniLM-L12-v2'
-    TOP_K: int = 3
+    TOP_K: int = 5
 
     SERPAPI_KEY: str = os.getenv('SERPAPI_KEY')
     LLAMA_SERVER_URL: str = os.getenv('LLAMA_SERVER_URL')
