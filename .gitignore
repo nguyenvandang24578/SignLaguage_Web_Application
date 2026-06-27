@@ -1,24 +1,41 @@
-"__pycache__/" 
-"*.pyc" 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OpenCode
 .opencode/
 opencode.json
 
-# Environment files
+# Environment & secrets
 .env
 .env.local
 .env.*.local
 
-# Chatbot data
-chatbot/backend/data/chat.db
-# Database temp files
+# Chatbot data & databases
+chatbot/backend/data/
+chatbot/backend/chroma_db/
+chatbot/chroma_db/
 *.db-shm
 *.db-wal
+
+# Large data files (PDF, JSON) - not for Git
+chatbot/backend/data_vsl/
 
 # Model files (quá nặng cho Git)
 chatbot/backend/models/
 *.gguf
 
-# OS / Editor
+# IDE
+.vscode/
+.idea/
+
+# OS
 .DS_Store
 Thumbs.db
