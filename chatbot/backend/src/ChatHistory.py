@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional
 
 BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-DB_PATH = os.getenv("DB_PATH", os.path.join(BACKEND_ROOT, "data", "chat.db"))
+DB_PATH = os.getenv("DB_PATH", os.path.join(BACKEND_ROOT, "chat_history", "chat.db"))
 
 _pool_lock = asyncio.Lock()
 _pool = None

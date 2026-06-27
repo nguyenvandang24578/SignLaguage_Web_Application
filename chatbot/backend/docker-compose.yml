@@ -10,11 +10,11 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data:/app/data
+      - ./chat_history:/app/chat_history
       - ./chroma_db:/app/chroma_db
     environment:
       - CHROMA_PATH=/app/chroma_db
-      - DB_PATH=/app/data/chat.db
+      - DB_PATH=/app/chat_history/chat.db
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s

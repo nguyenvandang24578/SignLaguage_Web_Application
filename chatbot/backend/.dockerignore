@@ -15,7 +15,7 @@ env
 !.env.example
 
 # Data directories (mounted via volumes)
-data/
+chat_history/
 chroma_db/
 
 # Large data (not needed in image)
