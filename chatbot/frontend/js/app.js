@@ -1,4 +1,9 @@
-const API = "http://localhost:8000/api";
+// ── API URL: tự động phát hiện môi trường ───────────────
+// Khi mở file trực tiếp (file://) → dùng localhost:8000 (dev)
+// Khi serve qua nginx (Docker) → dùng relative path /api
+const API = window.location.protocol === 'file:'
+  ? "http://localhost:8000/api"
+  : "/api";
 
 let currentSessionId = null;
 let isLoading = false;

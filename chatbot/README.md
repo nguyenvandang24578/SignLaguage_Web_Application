@@ -1,3 +1,32 @@
+## 🐳 Docker
+
+Chạy chatbot backend bằng Docker:
+
+```bash
+# Từ thư mục gốc của project:
+cd ..
+
+# Build và chạy backend
+docker compose up -d backend
+
+# Xem logs
+docker compose logs -f backend
+
+# Dừng
+docker compose down
+```
+
+Hoặc chạy backend riêng (không cần frontend):
+
+```bash
+cd backend
+docker compose up -d
+```
+
+> **Lưu ý:** Nhớ cấu hình `OPENAI_API_KEY` trong `backend/.env` trước khi chạy.
+
+Xem hướng dẫn đầy đủ tại [README.md ở root](../README.md).
+
 ## Cấu trúc thư mục
 
 ```

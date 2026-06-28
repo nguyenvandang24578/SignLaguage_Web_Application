@@ -28,7 +28,7 @@ COPY --from=builder /install /usr/local
 COPY src/ /app/src/
 
 # Tạo thư mục data trước khi đổi user
-RUN mkdir -p /app/data /app/chroma_db && chown -R appuser:appuser /app
+RUN mkdir -p /app/data /app/chat_history /app/chroma_db && chown -R appuser:appuser /app
 
 USER appuser
 
