@@ -13,10 +13,10 @@ env/
 .opencode/
 opencode.json
 
-# Environment & secrets
-.env
-.env.local
-.env.*.local
+# Environment & secrets (private repo — keep .env tracked for convenience)
+# .env
+# .env.local
+# .env.*.local
 
 # Chatbot data & databases
 # Note: data directories are now tracked by Git
