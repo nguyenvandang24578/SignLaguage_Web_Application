@@ -340,6 +340,70 @@ body {
   margin-top: 9px;
 }
 
+.msg-links {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.msg-links-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  margin-bottom: 2px;
+}
+
+.msg-link-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  transition: all var(--t-fast);
+}
+.msg-link-card:hover {
+  background: var(--blue-light);
+  border-color: var(--blue-mid);
+  transform: translateX(3px);
+}
+
+.msg-link-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--blue);
+  opacity: 0.7;
+}
+
+.msg-link-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--blue);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg-link-arrow {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--text-faint);
+  opacity: 0.5;
+  transition: all var(--t-fast);
+}
+.msg-link-card:hover .msg-link-arrow {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
 .msg-row.user-row .msg-text {
   background: linear-gradient(135deg, #ddeaf7 0%, var(--blue-light) 100%);
   border: 2px solid var(--blue-mid);

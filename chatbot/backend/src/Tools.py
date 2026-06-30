@@ -169,7 +169,7 @@ class WebSearcher:
             params = {
                 "q": query,
                 "api_key": self.api_key,
-                "num": 5,
+                "num": 3,
                 "gl": "vn",
                 "hl": "en"
             }
@@ -181,29 +181,38 @@ class WebSearcher:
 
             results = []
             results_details = []
+            links = []
 
             for idx, item in enumerate(data.get("organic_results", [])[:5], 1):
+                title = item.get('title', '')
+                link = item.get('link', '')
+                snippet = item.get('snippet', '')
+
                 result_text = (
-                    f"[{idx}] Title: {item.get('title')}\n"
-                    f"Source: {item.get('link')}\n"
-                    f"Summary: {item.get('snippet')}"
+                    f"[{idx}] {title}\n"
+                    f"  Link: {link}\n"
+                    f"  Nội dung: {snippet}"
                 )
                 results.append(result_text)
+                links.append({'title': title, 'url': link})
 
                 results_details.append({
-                    'title': item.get('title'),
-                    'link': item.get('link'),
-                    'snippet': item.get('snippet'),
+                    'title': title,
+                    'link': link,
+                    'snippet': snippet,
                     'position': idx
                 })
 
             context = "\n\n".join(results) if results else "No web results found"
+            links_text = "\n".join(f"- {l['title']}: {l['url']}" for l in links) if links else ""
 
             result = {
                 "context": context,
                 "source": "Web Search (SerpAPI)",
                 "num_results": len(results),
-                "results": results_details
+                "results": results_details,
+                "links": links,
+                "links_text": links_text,
             }
 
             _set_cache(cache_key, result)

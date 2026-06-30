@@ -6,7 +6,8 @@ import logging
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 import System
@@ -21,11 +22,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="VieSign AI API")
 
 ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:5173",
     "http://localhost:5500",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
     "http://127.0.0.1:5500",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
@@ -68,6 +65,7 @@ class ChatResponse(BaseModel):
     response: str
     session_id: str
     tools_used: list[str] = Field(default_factory=list)
+    links: list[dict] = Field(default_factory=list)
 
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -98,6 +96,7 @@ async def chat_endpoint(req: ChatRequest):
 
     response_text = result.get("answer", "")
     tools_used = result.get("tools_used", [])
+    links = result.get("links", [])
 
     if not response_text or not response_text.strip():
         response_text = "Xin lỗi, hệ thống AI tạm thời không khả dụng. Vui lòng thử lại sau."
@@ -110,6 +109,7 @@ async def chat_endpoint(req: ChatRequest):
         response=response_text,
         session_id=session_id,
         tools_used=tools_used,
+        links=links,
     )
 
 
@@ -146,7 +146,8 @@ async def chat_stream(req: ChatRequest):
                     done_event = {
                         'type': 'done',
                         'session_id': session_id,
-                        'tools_used': event.get('tools_used', [])
+                        'tools_used': event.get('tools_used', []),
+                        'links': event.get('links', []),
                     }
                     yield f"data: {json.dumps(done_event)}\n\n"
 
@@ -195,6 +196,15 @@ async def delete_history(session_id: str):
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "version": "2.0-chroma"}
+
+
+# ── Serve frontend static files ──────────────────────────
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
+if os.path.isdir(FRONTEND_DIR):
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+    logger.info(f"Frontend mounted from: {FRONTEND_DIR}")
+else:
+    logger.warning(f"Frontend directory not found: {FRONTEND_DIR}")
 
 
 if __name__ == "__main__":

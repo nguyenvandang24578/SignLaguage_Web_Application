@@ -35,8 +35,9 @@ TOOL_SCHEMAS = [
             "description": (
                 "Tra cứu từ cơ sở tri thức VSL (ChromaDB local) gồm sách PDF về VSL và từ điển ký hiệu VSL. "
                 "Chứa thông tin về: cách biểu diễn ký hiệu, mô tả động tác tay, định nghĩa từ, "
-                "lịch sử VSL, đặc điểm ngôn ngữ. "
-                "Dùng khi người dùng hỏi 'miêu tả', 'biểu diễn', 'ký hiệu' một từ cụ thể, "
+                "Thông tin cơ bản về ngôn ngữ ký hiệu Việt Nam, "
+                "Thông tin về ứng dụng VSL ứng dụng hỗ trợ học VSL của chúng tôi."
+                "Dùng khi người dùng hỏi 'miêu tả', 'biểu diễn', 'ký hiệu' một từ cụ thể."
                 "hoặc hỏi về kiến thức VSL nói chung."
             ),
             "parameters": {
@@ -105,17 +106,17 @@ SYSTEM_PROMPT = (
     "S → O → P | phủ định: thêm 'không' cuối | hỏi: từ hỏi cuối câu\n"
     "Số đứng sau danh từ | Thời gian đầu câu | Bỏ: là, của, ở, những, các, đã, sẽ, đang\n\n"
     "KHI vsl_restruct lỗi: tự chuyển đổi theo luật trên.\n\n"
-    "ĐỊNH DẠNG: trả lời tự nhiên, không ký tự đặc biệt, không tiêu đề, không ghi chú."
+    "ĐỊNH DẠNG: trả lời tự nhiên, không ký tự đặc biệt, không tiêu đề, không ghi chú.\n\n"
 )
 
 TOOL_FUNCS = Tools.TOOLS_MAPPING_TO_FUNC_ASYNC
 
 
-async def _execute_tool(name: str, args: dict) -> str:
+async def _execute_tool(name: str, args: dict) -> dict:
     func = TOOL_FUNCS.get(name)
     if not func:
         logger.warning(f"Tool not found: {name}")
-        return f"Lỗi: không tìm thấy công cụ {name}"
+        return {"content": f"Lỗi: không tìm thấy công cụ {name}", "links": []}
 
     try:
         logger.info(f"Executing tool: {name}({json.dumps(args, ensure_ascii=False)})")
@@ -123,10 +124,13 @@ async def _execute_tool(name: str, args: dict) -> str:
             result = await func(**args)
         else:
             result = func(**args)
-        return result.get("context", str(result))
+
+        content = result.get("context", str(result))
+        links = result.get("links", []) if name == "get_web_search" else []
+        return {"content": content, "links": links}
     except Exception as e:
         logger.error(f"Tool {name} error: {e}")
-        return f"Lỗi thực thi công cụ {name}: {str(e)}"
+        return {"content": f"Lỗi thực thi công cụ {name}: {str(e)}", "links": []}
 
 
 def _build_messages(query: str, conversation_history: list = None) -> list:
@@ -147,6 +151,7 @@ def _safe_answer(text: str) -> str:
 async def run_query(query: str, conversation_history: list = None) -> dict:
     messages = _build_messages(query, conversation_history)
     tools_used = []
+    all_links = []
 
     try:
         response = client.chat.completions.create(
@@ -172,6 +177,7 @@ async def run_query(query: str, conversation_history: list = None) -> dict:
 
                 tool_result = await _execute_tool(func_name, func_args)
                 tools_used.append(func_name)
+                all_links.extend(tool_result.get("links", []))
 
                 messages.append({
                     "role": "assistant",
@@ -181,7 +187,7 @@ async def run_query(query: str, conversation_history: list = None) -> dict:
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": tool_result
+                    "content": tool_result["content"]
                 })
 
             response = client.chat.completions.create(
@@ -201,6 +207,7 @@ async def run_query(query: str, conversation_history: list = None) -> dict:
     return {
         "answer": _safe_answer(final_answer),
         "tools_used": tools_used,
+        "links": all_links,
     }
 
 
@@ -216,8 +223,6 @@ def _prepend_to_stream(prefix_chunks, stream):
 async def _accumulate_streaming_tool_calls(
     stream,
 ) -> tuple[list[dict], list[dict]]:
-    """Accumulate tool call deltas from a streaming response.
-    Returns (full_tool_calls, tool_call_messages) ready to append."""
     tool_calls_map: dict[int, dict] = {}
 
     for chunk in stream:
@@ -263,6 +268,7 @@ async def _accumulate_streaming_tool_calls(
 async def run_query_streaming(query: str, conversation_history: list = None):
     messages = _build_messages(query, conversation_history)
     tools_used = []
+    all_links = []
 
     try:
         yield {"type": "info", "content": "Đang phân tích câu hỏi..."}
@@ -279,8 +285,6 @@ async def run_query_streaming(query: str, conversation_history: list = None):
         )
 
         # ── Phân luồng: content (trả lời ngay) hay tool_calls ──
-        # OpenAI stream chunk đầu thường chỉ có role: "assistant"
-        # Nên buffer vài chunk cho đến khi thấy content hoặc tool_calls
         buffered = []
         is_tool_call = False
         collected_content = ""
@@ -330,11 +334,12 @@ async def run_query_streaming(query: str, conversation_history: list = None):
 
                 tool_result = await _execute_tool(func_name, func_args)
                 tools_used.append(func_name)
+                all_links.extend(tool_result.get("links", []))
 
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc["id"],
-                    "content": tool_result,
+                    "content": tool_result["content"],
                 })
 
             yield {"type": "info", "content": "Đang tổng hợp câu trả lời..."}
@@ -374,7 +379,7 @@ async def run_query_streaming(query: str, conversation_history: list = None):
         yield {"type": "token", "content": "Xin lỗi, hệ thống AI tạm thời không khả dụng. Vui lòng thử lại sau."}
 
     finally:
-        yield {"type": "_done", "tools_used": tools_used}
+        yield {"type": "_done", "tools_used": tools_used, "links": all_links if all_links else []}
 
 
 def preload_embedding_model():

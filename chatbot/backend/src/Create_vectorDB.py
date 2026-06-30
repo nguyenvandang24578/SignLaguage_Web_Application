@@ -3,7 +3,7 @@ import os
 import argparse
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
@@ -24,9 +24,11 @@ logger = logging.getLogger(__name__)
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
-CHROMA_PATH = os.getenv('CHROMA_PATH', './chroma_db')
+
+# Mặc định: thư mục data_vsl và chroma_db nằm ở backend/ (cùng cấp với src/)
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+CHROMA_PATH = os.getenv('CHROMA_PATH', str(_BACKEND_DIR / 'chroma_db'))
 COLLECTION_NAME = os.getenv('COLLECTION_NAME', 'vsl_knowledge_base')
-JSON_COLLECTION_NAME = os.getenv('JSON_COLLECTION_NAME', 'vsl_json_entries')
 
 
 def load_pdf_files(path_dir: Path) -> List:
@@ -152,7 +154,7 @@ def create_chromadb(chunks: List, collection_name: str, chroma_path: str):
 
     for i, chunk in enumerate(chunks):
         documents.append(chunk.page_content)
-        meta = dict(chunk.metadata)  # copy all original metadata
+        meta = dict(chunk.metadata)
         meta.setdefault('source', '')
         meta.setdefault('page', -1)
         meta['chunk_index'] = i
@@ -183,93 +185,61 @@ def create_chromadb(chunks: List, collection_name: str, chroma_path: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Tạo ChromaDB vector database từ PDF, JSON hoặc cả hai')
-    parser.add_argument('--data_type', type=str, default='pdf',
-                        choices=['pdf', 'json', 'both'],
-                        help='Loại dữ liệu nguồn: pdf (mặc định), json, hoặc both (gộp cả 2)')
-    parser.add_argument('--pdf_dir', type=str, default='./data_vsl',
-                        help='Đường dẫn thư mục chứa file PDF (dùng khi --data_type=pdf hoặc both)')
-    parser.add_argument('--json_file', type=str, default='./data_vsl/sign_language_data.json',
-                        help='Đường dẫn file JSON (dùng khi --data_type=json hoặc both)')
-    parser.add_argument('--collection', type=str, default=None,
-                        help='Tên collection (mặc định: vsl_knowledge_base cho pdf/both, vsl_json_entries cho json)')
+    parser = argparse.ArgumentParser(
+        description='Tạo ChromaDB vector database từ PDF và JSON (tự động gộp vào 1 collection duy nhất)'
+    )
+    parser.add_argument('--pdf_dir', type=str,
+                        default=str(_BACKEND_DIR / 'data_vsl'),
+                        help='Đường dẫn thư mục chứa file PDF')
+    parser.add_argument('--json_file', type=str,
+                        default=str(_BACKEND_DIR / 'data_vsl' / 'sign_language_data.json'),
+                        help='Đường dẫn file JSON')
+    parser.add_argument('--collection', type=str, default=COLLECTION_NAME,
+                        help=f'Tên collection (mặc định: {COLLECTION_NAME})')
     parser.add_argument('--chroma_path', type=str, default=CHROMA_PATH,
                         help=f'Đường dẫn lưu ChromaDB (mặc định: {CHROMA_PATH})')
     parser.add_argument('--threshold_type', type=str, default='percentile',
                         choices=['percentile', 'standard_deviation', 'interquartile'],
-                        help='Kiểu threshold cho semantic chunking (chỉ dùng với PDF)')
+                        help='Kiểu threshold cho semantic chunking')
     parser.add_argument('--threshold_amount', type=float, default=95.0,
-                        help='Ngưỡng cho semantic chunking (chỉ dùng với PDF)')
+                        help='Ngưỡng cho semantic chunking')
 
     args = parser.parse_args()
 
-    # Chọn collection name mặc định theo data_type
-    if args.collection is None:
-        if args.data_type == 'json':
-            args.collection = JSON_COLLECTION_NAME
-        else:
-            args.collection = COLLECTION_NAME
+    # ---- 1. XỬ LÝ PDF ----
+    pdf_dir = Path(args.pdf_dir)
+    if not pdf_dir.exists():
+        logger.error(f'Thư mục PDF không tồn tại: {pdf_dir}')
+        return
 
-    if args.data_type == 'json':
-        # ---- XỬ LÝ JSON ----
-        json_path = Path(args.json_file)
-        if not json_path.exists():
-            logger.error(f'File JSON không tồn tại: {json_path}')
-            return
+    pdf_documents = load_pdf_files(pdf_dir)
+    if not pdf_documents:
+        logger.error('Không tìm thấy PDF nào.')
+        return
 
-        chunks = load_json_data(json_path)
-        if not chunks:
-            logger.error('Không có dữ liệu JSON để xử lý.')
-            return
+    pdf_chunks = semantic_chunking(
+        documents=pdf_documents,
+        breakpoint_threshold_type=args.threshold_type,
+        breakpoint_threshold_amount=args.threshold_amount,
+    )
 
-    elif args.data_type == 'both':
-        # ---- GỘP CẢ PDF + JSON VÀO CHUNG 1 COLLECTION ----
-        pdf_dir = Path(args.pdf_dir)
-        if not pdf_dir.exists():
-            logger.error(f'Thư mục PDF không tồn tại: {pdf_dir}')
-            return
-        pdf_documents = load_pdf_files(pdf_dir)
-        if not pdf_documents:
-            logger.error('Không tìm thấy PDF nào.')
-            return
-        pdf_chunks = semantic_chunking(
-            documents=pdf_documents,
-            breakpoint_threshold_type=args.threshold_type,
-            breakpoint_threshold_amount=args.threshold_amount,
-        )
+    # ---- 2. XỬ LÝ JSON ----
+    json_path = Path(args.json_file)
+    if not json_path.exists():
+        logger.error(f'File JSON không tồn tại: {json_path}')
+        return
 
-        json_path = Path(args.json_file)
-        if not json_path.exists():
-            logger.error(f'File JSON không tồn tại: {json_path}')
-            return
-        json_chunks = load_json_data(json_path)
-        if not json_chunks:
-            logger.error('Không có dữ liệu JSON.')
-            return
+    json_chunks = load_json_data(json_path)
+    if not json_chunks:
+        logger.error('Không có dữ liệu JSON.')
+        return
 
-        # Gộp: PDF chunks + JSON chunks
-        chunks = pdf_chunks + json_chunks
-        logger.info(f'=== TỔNG KẾT GỘP: {len(pdf_chunks)} chunks PDF + {len(json_chunks)} chunks JSON = {len(chunks)} chunks ===')
-
-    else:
-        # ---- XỬ LÝ PDF ----
-        pdf_dir = Path(args.pdf_dir)
-        if not pdf_dir.exists():
-            logger.error(f'Thư mục PDF không tồn tại: {pdf_dir}')
-            logger.info('Tạo thư mục và đặt file PDF vào đó, sau đó chạy lại.')
-            os.makedirs(pdf_dir, exist_ok=True)
-            return
-
-        documents = load_pdf_files(pdf_dir)
-        if not documents:
-            logger.error('Không tìm thấy PDF nào. Hãy đặt file PDF vào thư mục.')
-            return
-
-        chunks = semantic_chunking(
-            documents=documents,
-            breakpoint_threshold_type=args.threshold_type,
-            breakpoint_threshold_amount=args.threshold_amount,
-        )
+    # ---- 3. GỘP TẤT CẢ VÀO CHUNG 1 COLLECTION ----
+    chunks = pdf_chunks + json_chunks
+    logger.info(
+        f'=== GỘP: {len(pdf_chunks)} chunks PDF + {len(json_chunks)} chunks JSON'
+        f' = {len(chunks)} tổng số chunks ==='
+    )
 
     create_chromadb(
         chunks=chunks,

@@ -1,9 +1,9 @@
-// ── API URL: tự động phát hiện môi trường ───────────────
-// Khi mở file trực tiếp (file://) → dùng localhost:8000 (dev)
-// Khi serve qua nginx (Docker) → dùng relative path /api
-const API = window.location.protocol === 'file:'
-  ? "http://localhost:8000/api"
-  : "/api";
+const DEV_PORTS = ["5500", "5501", "3000", "5173", "8080"];
+const API =
+  window.location.protocol === "file:" ||
+  DEV_PORTS.includes(window.location.port)
+    ? "http://localhost:8000/api"
+    : "/api";
 
 let currentSessionId = null;
 let isLoading = false;
@@ -52,7 +52,7 @@ function makeAvatar(role) {
   return wrap;
 }
 
-function appendMessage(role, text, toolsUsed = [], elapsed = null) {
+function appendMessage(role, text, toolsUsed = [], elapsed = null, links = []) {
   hideWelcome();
 
   const row = document.createElement("div");
@@ -90,6 +90,11 @@ function appendMessage(role, text, toolsUsed = [], elapsed = null) {
     tools.className = "msg-tools";
     tools.textContent = `${toolsUsed.join(", ")}`;
     content.appendChild(tools);
+  }
+
+  // Add link cards nếu có
+  if (role !== "user") {
+    renderLinkCards(links, content);
   }
 
   row.appendChild(avatar);
@@ -330,7 +335,46 @@ function createBotMessageContainer() {
   return { row, msgText };
 }
 
-function finalizeBotMessage(sessionId, toolsUsed, elapsed) {
+function renderLinkCards(links, container) {
+  if (!Array.isArray(links) || links.length === 0) return;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "msg-links";
+
+  links.forEach((link) => {
+    const title = link.title || link.url || "Link";
+    const url = link.url || link.link || "#";
+
+    const card = document.createElement("a");
+    card.className = "msg-link-card";
+    card.href = url;
+    card.target = "_blank";
+    card.rel = "noopener noreferrer";
+    card.title = url;
+
+    card.innerHTML = `
+      <svg class="msg-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+      </svg>
+      <span class="msg-link-title">${escapeHtml(title)}</span>
+      <svg class="msg-link-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+    `;
+
+    wrapper.appendChild(card);
+  });
+
+  container.appendChild(wrapper);
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function finalizeBotMessage(sessionId, toolsUsed, elapsed, links) {
   const row = document.getElementById("streaming-row");
   if (!row) return;
 
@@ -348,13 +392,16 @@ function finalizeBotMessage(sessionId, toolsUsed, elapsed) {
   }
 
   // Add tools used
+  const content = row.querySelector(".msg-content");
   if (Array.isArray(toolsUsed) && toolsUsed.length > 0) {
-    const content = row.querySelector(".msg-content");
     const tools = document.createElement("div");
     tools.className = "msg-tools";
     tools.textContent = `${toolsUsed.join(", ")}`;
     content.appendChild(tools);
   }
+
+  // Add link cards
+  renderLinkCards(links, content);
 
   if (!currentSessionId && sessionId) {
     currentSessionId = sessionId;
@@ -438,6 +485,7 @@ async function sendMessage() {
     let fullResponse = "";
     let tempSessionId = null;
     let tempTools = [];
+    let tempLinks = [];
 
     while (true) {
       const { done, value } = await reader.read();
@@ -468,6 +516,7 @@ async function sendMessage() {
             case "done":
               tempSessionId = event.session_id || null;
               tempTools = event.tools_used || [];
+              tempLinks = event.links || [];
               break;
             case "error":
               throw new Error(event.content);
@@ -482,7 +531,7 @@ async function sendMessage() {
 
     const elapsed = (performance.now() - startTime) / 1000;
 
-    finalizeBotMessage(tempSessionId, tempTools, elapsed);
+    finalizeBotMessage(tempSessionId, tempTools, elapsed, tempLinks);
 
     const isFirstMessage = !currentSessionIdBefore;
     if (isFirstMessage && tempSessionId) {
