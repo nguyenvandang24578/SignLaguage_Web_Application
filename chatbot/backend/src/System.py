@@ -12,11 +12,6 @@ import Tools
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-
-# ─────────────────────────────────────────────
-#  CONFIG
-# ─────────────────────────────────────────────
-
 class Config:
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
     OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
@@ -82,9 +77,6 @@ _FALLBACK_TOOL_SCHEMAS = [
 
 TOOL_FUNCS = Tools.TOOLS_MAPPING_TO_FUNC_ASYNC
 
-# ─────────────────────────────────────────────
-#  TOOL DISPLAY NAMES  (friendly labels cho frontend)
-# ─────────────────────────────────────────────
 
 TOOL_DISPLAY_MAP = {
     "get_qa_retriever": "📖 Tra cứu tri thức",
@@ -95,9 +87,6 @@ TOOL_DISPLAY_MAP = {
 def map_tools_display(tools: list[str]) -> list[str]:
     return [TOOL_DISPLAY_MAP.get(t, t) for t in tools]
 
-# ─────────────────────────────────────────────
-#  DATA CLASSES
-# ─────────────────────────────────────────────
 
 @dataclass
 class IntentResult:
@@ -119,10 +108,6 @@ class OrchestratedResult:
     tools_used: list[str] = field(default_factory=list)
     all_links: list = field(default_factory=list)
 
-
-# ─────────────────────────────────────────────
-#  QUERY ANALYZER  (heuristic, 0 LLM cost)
-# ─────────────────────────────────────────────
 
 class QueryAnalyzer:
     """Phân tích query bằng regex/keywords — zero LLM cost."""
@@ -207,8 +192,6 @@ class QueryAnalyzer:
 
     @classmethod
     def _likely_sign_query(cls, q: str) -> bool:
-        """Kiểm tra query có khả năng hỏi về ký hiệu 1 từ cụ thể."""
-        # "từ X", "chữ X", "X là gì", "X trong VSL"
         short_words = [w for w in q.split() if len(w) <= 5]
         return len(short_words) >= 1 and any(
             w in q for w in ["là gì", "trong vsl", "từ", "chữ"]
@@ -216,7 +199,6 @@ class QueryAnalyzer:
 
     @classmethod
     def _likely_vsl_related(cls, q: str) -> bool:
-        """Kiểm tra query có liên quan đến VSL hay không."""
         vsl_hints = ["vsl", "ký hiệu", "ngôn ngữ", "người câm", "điếc",
                      "thủ ngữ", "câm", "ra dấu", "tay"]
         for hint in vsl_hints:
@@ -229,7 +211,6 @@ class QueryAnalyzer:
 
     @staticmethod
     def extract_sentence(query: str) -> str | None:
-        """Trích xuất câu cần chuyển đổi cấu trúc từ query (regex)."""
         patterns = [
             # "chuyển câu 'tôi đi ăn' sang VSL"
             r"['\"](.+?)['\"]",
@@ -247,13 +228,8 @@ class QueryAnalyzer:
         return None
 
 
-# ─────────────────────────────────────────────
-#  MINI LLM EXTRACTOR  (chỉ cho vsl_restruct)
-# ─────────────────────────────────────────────
 
 class MiniExtractor:
-    """1 mini LLM call — chỉ extract câu cần restruct (temperature=0, max_tokens=50)."""
-
     _PROMPT = (
         "Trích xuất CHÍNH XÁC câu tiếng Việt cần chuyển đổi cấu trúc VSL "
         "(sắp xếp lại thứ tự từ theo ngữ pháp VSL) từ câu hỏi dưới đây.\n"
@@ -264,7 +240,6 @@ class MiniExtractor:
 
     @classmethod
     async def extract(cls, query: str) -> str | None:
-        """Gọi LLM với prompt siêu ngắn, temperature=0, max_tokens=50."""
         try:
             resp = client.chat.completions.create(
                 model=config.OPENAI_MODEL,
@@ -282,13 +257,8 @@ class MiniExtractor:
             return None
 
 
-# ─────────────────────────────────────────────
-#  TOOL ORCHESTRATOR  (parallel execution)
-# ─────────────────────────────────────────────
 
 class ToolOrchestrator:
-    """Chạy các tool song song, fuse kết quả thành 1 context duy nhất."""
-
     @staticmethod
     async def execute(
         tools: list[str],
@@ -349,10 +319,6 @@ class ToolOrchestrator:
         )
 
 
-# ─────────────────────────────────────────────
-#  TOOL EXECUTION  (cải tiến)
-# ─────────────────────────────────────────────
-
 async def _execute_tool_rich(name: str, args: dict) -> dict:
     """Execute tool với logging + error handling. Trả về dict {content, links}."""
     func = TOOL_FUNCS.get(name)
@@ -389,9 +355,6 @@ async def _execute_tool_rich(name: str, args: dict) -> dict:
         return {"content": "", "links": []}
 
 
-# ─────────────────────────────────────────────
-#  SYSTEM PROMPT  (rút gọn, không còn tool rules)
-# ─────────────────────────────────────────────
 
 SYSTEM_PROMPT = (
     "Bạn là trợ lý AI chuyên về Ngôn ngữ Ký hiệu Việt Nam (VSL). "
@@ -415,12 +378,7 @@ SYSTEM_PROMPT = (
 )
 
 
-# ─────────────────────────────────────────────
-#  BUILD MESSAGES
-# ─────────────────────────────────────────────
-
 def _build_messages(query: str, conversation_history: list | None = None, tool_context: str | None = None) -> list:
-    """Build messages array. Inject tool_context nếu có."""
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     # Inject context từ tools (nếu có) — ngay sau system prompt
@@ -441,9 +399,6 @@ def _build_messages(query: str, conversation_history: list | None = None, tool_c
     return messages
 
 
-# ─────────────────────────────────────────────
-#  SAFE ANSWER
-# ─────────────────────────────────────────────
 
 def _safe_answer(text: str) -> str:
     text = (text or "").strip()
@@ -452,9 +407,6 @@ def _safe_answer(text: str) -> str:
     return text
 
 
-# ──────────────────────────────────────────────
-#  RUN QUERY  (non-streaming)  —  single LLM call
-# ──────────────────────────────────────────────
 
 async def run_query(query: str, conversation_history: list = None) -> dict:
     """Single-pass: heuristic → parallel tools → 1 LLM call. Không tool schemas."""
@@ -504,9 +456,6 @@ async def run_query(query: str, conversation_history: list = None) -> dict:
     }
 
 
-# ──────────────────────────────────────────────
-#  RUN QUERY STREAMING  —  single LLM call
-# ──────────────────────────────────────────────
 
 async def run_query_streaming(query: str, conversation_history: list = None):
     """
@@ -515,9 +464,7 @@ async def run_query_streaming(query: str, conversation_history: list = None):
     """
     tool_results = OrchestratedResult()
     try:
-        # ═══════════════════════════════════════════════
-        #  PHASE 1: LLM decides which tools to use
-        # ═══════════════════════════════════════════════
+
         yield {"type": "info", "content": "Đang phân tích câu hỏi..."}
 
         messages = _build_messages(query, conversation_history)
@@ -534,9 +481,6 @@ async def run_query_streaming(query: str, conversation_history: list = None):
         choice = response.choices[0]
         msg = choice.message
 
-        # ═══════════════════════════════════════════════
-        #  PHASE 2: Execute tools (nếu LLM yêu cầu)
-        # ═══════════════════════════════════════════════
         if msg.tool_calls:
             yield {"type": "info", "content": "Đang tra cứu thông tin..."}
 
@@ -564,9 +508,7 @@ async def run_query_streaming(query: str, conversation_history: list = None):
 
             yield {"type": "info", "content": "Đang tổng hợp câu trả lời..."}
 
-        # ═══════════════════════════════════════════════
-        #  PHASE 3: Stream final answer
-        # ═══════════════════════════════════════════════
+
         stream = client.chat.completions.create(
             model=config.OPENAI_MODEL,
             messages=messages,
@@ -601,9 +543,6 @@ async def run_query_streaming(query: str, conversation_history: list = None):
         }
 
 
-# ─────────────────────────────────────────────
-#  LIFECYCLE
-# ─────────────────────────────────────────────
 
 def preload_embedding_model():
     Tools.preload()
