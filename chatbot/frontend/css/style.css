@@ -325,22 +325,44 @@ body {
   padding-top: 5px;
 }
 
+
+.msg-tools-wrapper {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.msg-tools-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
+}
+
 .msg-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.msg-tool-badge {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 12px;
+  gap: 4px;
+  padding: 4px 10px;
   border-radius: 999px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  margin-top: 9px;
+  white-space: nowrap;
 }
 
-.msg-links {
+.msg-links-wrapper {
   margin-top: 12px;
   display: flex;
   flex-direction: column;
@@ -350,10 +372,14 @@ body {
 .msg-links-label {
   font-size: 12px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.03em;
   color: var(--text-faint);
-  margin-bottom: 2px;
+}
+
+.msg-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .msg-link-card {

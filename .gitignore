@@ -24,6 +24,9 @@ opencode.json
 *.db-shm
 *.db-wal
 
+# Accidental data copy inside src/ (should be at backend/ level only)
+chatbot/backend/src/chroma_db/
+
 # Model files (quá nặng cho Git)
 chatbot/backend/models/
 *.gguf

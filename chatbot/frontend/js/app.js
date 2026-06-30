@@ -391,17 +391,37 @@ function finalizeBotMessage(sessionId, toolsUsed, elapsed, links) {
     sender.appendChild(timeSpan);
   }
 
-  // Add tools used
+  // Add tools used — with label
   const content = row.querySelector(".msg-content");
   if (Array.isArray(toolsUsed) && toolsUsed.length > 0) {
-    const tools = document.createElement("div");
-    tools.className = "msg-tools";
-    tools.textContent = `${toolsUsed.join(", ")}`;
-    content.appendChild(tools);
+    const wrapper = document.createElement("div");
+    wrapper.className = "msg-tools-wrapper";
+
+    const badges = document.createElement("div");
+    badges.className = "msg-tools";
+    toolsUsed.forEach((tool) => {
+      const badge = document.createElement("span");
+      badge.className = "msg-tool-badge";
+      badge.textContent = tool;
+      badges.appendChild(badge);
+    });
+    wrapper.appendChild(badges);
+    content.appendChild(wrapper);
   }
 
-  // Add link cards
-  renderLinkCards(links, content);
+  // Add link cards — with label
+  if (Array.isArray(links) && links.length > 0) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "msg-links-wrapper";
+
+    const label = document.createElement("span");
+    label.className = "msg-links-label";
+    label.textContent = "🔗 Nguồn tham khảo:";
+    wrapper.appendChild(label);
+
+    renderLinkCards(links, wrapper);
+    content.appendChild(wrapper);
+  }
 
   if (!currentSessionId && sessionId) {
     currentSessionId = sessionId;
@@ -432,7 +452,7 @@ async function sendMessage() {
   const startTime = performance.now();
   isLoading = true;
 
-  // Replace loading dots with a real streaming container
+  // Show 3-dot loading indicator (will stay until first token arrives)
   appendLoadingIndicator();
 
   // ── Cancel / Abort controller ──────────────────────────
@@ -475,9 +495,8 @@ async function sendMessage() {
       throw new Error(errData.detail || `HTTP ${res.status}`);
     }
 
-    // Remove loading indicator, create real streaming container
-    removeLoading();
-    const { msgText } = createBotMessageContainer();
+    // Keep loading indicator — will be replaced on first token
+    let streamStarted = false;
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -507,11 +526,17 @@ async function sendMessage() {
 
           switch (event.type) {
             case "token":
+              if (!streamStarted) {
+                // First token: transition from loading → streaming container
+                removeLoading();
+                createBotMessageContainer();
+                streamStarted = true;
+              }
               fullResponse += event.content;
               updateStreamingText(fullResponse);
               break;
             case "info":
-              // Optionally: show a small status indicator
+              // Status event from server — currently unused
               break;
             case "done":
               tempSessionId = event.session_id || null;
@@ -530,6 +555,12 @@ async function sendMessage() {
     }
 
     const elapsed = (performance.now() - startTime) / 1000;
+
+    // Safety: if stream ended without any token (shouldn't happen), replace loading indicator
+    if (!streamStarted) {
+      removeLoading();
+      createBotMessageContainer();
+    }
 
     finalizeBotMessage(tempSessionId, tempTools, elapsed, tempLinks);
 

@@ -3,7 +3,7 @@ import time
 import torch
 import logging
 from dotenv import load_dotenv
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 import httpx
@@ -37,7 +37,8 @@ class Config:
     COLLECTION_NAME: str = os.getenv('COLLECTION_NAME', 'vsl_knowledge_base')
     CHROMA_PATH: str = os.getenv('CHROMA_PATH', './chroma_db')
     EMBEDDING_MODEL: str = 'paraphrase-multilingual-MiniLM-L12-v2'
-    TOP_K: int = 5
+    TOP_K: int = int(os.getenv('CHROMA_TOP_K', '3'))            # giảm 5→3
+    CHROMA_CACHE_TTL: int = int(os.getenv('CHROMA_CACHE_TTL', '300'))  # 5 phút
 
     SERPAPI_KEY: str = os.getenv('SERPAPI_KEY')
     LLAMA_SERVER_URL: str = os.getenv('LLAMA_SERVER_URL')
@@ -57,6 +58,7 @@ class ChromaRetriever:
             device=config.DEVICE
         )
         self._collection = None
+        self._cache: dict[str, dict] = {}  # query → result cache
 
     @property
     def collection(self):
@@ -73,6 +75,16 @@ class ChromaRetriever:
 
     def search(self, query: str, top_k: Optional[int] = None) -> Dict:
         k = top_k or self.config.TOP_K
+        cache_key = f"{query.strip().lower()}_{k}"
+
+        # Check cache
+        cached_entry = self._cache.get(cache_key)
+        if cached_entry:
+            now = time.time()
+            if (now - cached_entry.get('time', 0)) < self.config.CHROMA_CACHE_TTL:
+                logger.info(f"ChromaDB cache HIT for: {query[:60]}...")
+                return cached_entry['data']
+
         col = self.collection
         if not col:
             return {
@@ -119,12 +131,23 @@ class ChromaRetriever:
                 for i, r in enumerate(top_results)
             ]
 
-            return {
+            result = {
                 'context': '\n\n'.join(context_parts),
                 'source': self.config.COLLECTION_NAME,
                 'results': top_results,
                 'top_score': top_results[0]['score'] if top_results else 0.0
             }
+
+            # Cache + TTL invalidation
+            now = time.time()
+            self._cache[cache_key] = {
+                'data': result,
+                'time': now,
+            }
+            self._invalidate_cache(now)
+            logger.info(f"ChromaDB cached: {query[:60]}... ({len(top_results)} results)")
+
+            return result
 
         except Exception as e:
             logger.error(f'ChromaDB search error: {str(e)}')
@@ -134,6 +157,13 @@ class ChromaRetriever:
                 'results': [],
                 'top_score': 0.0
             }
+
+    def _invalidate_cache(self, now: float):
+        ttl = self.config.CHROMA_CACHE_TTL
+        expired = [k for k, v in self._cache.items()
+                   if (now - v.get('time', 0)) >= ttl]
+        for k in expired:
+            del self._cache[k]
 
 
 class WebSearcher:
