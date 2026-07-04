@@ -1,8 +1,12 @@
 import os
+import sys
 import uvicorn
 import html
 import json
+import asyncio
+import signal
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 
 import System
 import ChatHistory
+import Tools
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,7 +24,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="VieSign AI API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Khởi tạo và dọn dẹp tài nguyên theo lifecycle."""
+    # ── STARTUP ──
+    logger.info("Khởi động server...")
+    System.preload_embedding_model()
+    logger.info("Hệ thống đã sẵn sàng! (ChromaDB local + OpenAI)")
+    yield
+    # ── SHUTDOWN ──
+    logger.info("=== Server shutting down ===")
+    try:
+        # 1. Cleanup toàn bộ resource
+        await System.cleanup()
+
+        # 2. Đóng SQLite connection
+        await ChatHistory.close()
+    except Exception as e:
+        logger.error(f"Shutdown error: {e}")
+
+    # 3. Giải phóng port
+    Tools.release_port(port=8000)
+
+    logger.info("=== Server shutdown complete ===")
+
+
+app = FastAPI(title="VieSign AI API", lifespan=lifespan)
 
 ALLOWED_ORIGINS = [
     "http://localhost:5500",
@@ -35,20 +65,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Khởi động server...")
-    System.preload_embedding_model()
-    logger.info("Hệ thống đã sẵn sàng! (ChromaDB local + OpenAI)")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Server shutdown...")
-    await System.cleanup()
-    logger.info("Đã giải phóng tài nguyên.")
 
 
 class ChatRequest(BaseModel):
@@ -207,8 +223,24 @@ else:
     logger.warning(f"Frontend directory not found: {FRONTEND_DIR}")
 
 
+def _handle_signal(sig, frame):
+    """Handler cho SIGINT/SIGTERM — gọi cleanup đồng bộ rồi thoát."""
+    sig_name = signal.Signals(sig).name
+    logger.warning(f"Received {sig_name}, initiating shutdown...")
+    logger.info("Giải phóng tài nguyên (cleanup sync)...")
+    Tools.cleanup_sync()
+    logger.info(f"Shutdown complete after {sig_name}.")
+    sys.exit(0)
+
+
 if __name__ == "__main__":
+    # ── Đăng ký signal handler cho trường hợp uvicorn không bắt kịp ──
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
     debug_mode = os.getenv("DEBUG", "false").lower() == "true"
+    shutdown_timeout = System.config.SHUTDOWN_TIMEOUT
+
     uvicorn.run(
         "server:app",
         host="0.0.0.0",

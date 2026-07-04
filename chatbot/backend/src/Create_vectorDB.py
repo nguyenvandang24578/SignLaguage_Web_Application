@@ -27,7 +27,7 @@ EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
 # Mặc định: thư mục data_vsl và chroma_db nằm ở backend/ (cùng cấp với src/)
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
-CHROMA_PATH = os.getenv('CHROMA_PATH', str(_BACKEND_DIR / 'chroma_db'))
+CHROMA_PATH = os.getenv('CHROMA_PATH', str(_BACKEND_DIR / 'src' / 'chroma_db'))
 COLLECTION_NAME = os.getenv('COLLECTION_NAME', 'vsl_knowledge_base')
 
 

@@ -3,8 +3,11 @@ import json
 import uuid
 import os
 import asyncio
+import logging
 from datetime import datetime
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DB_PATH = os.getenv("DB_PATH", os.path.join(BACKEND_ROOT, "chat_history", "chat.db"))
@@ -144,5 +147,18 @@ async def delete_session(session_id: str) -> bool:
     )
     await pool.commit()
     return cursor.rowcount > 0
+
+
+async def close():
+    """Đóng kết nối SQLite — gọi khi server shutdown."""
+    global _pool
+    async with _pool_lock:
+        if _pool is not None:
+            try:
+                await _pool.close()
+                logger.info("SQLite connection closed.")
+            except Exception as e:
+                logger.warning(f"SQLite close error: {e}")
+            _pool = None
 
 

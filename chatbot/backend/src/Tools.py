@@ -1,7 +1,11 @@
 import os
+import re
 import time
 import torch
+import socket
+import signal
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
 from typing import Optional, Dict
 import chromadb
@@ -10,6 +14,11 @@ import httpx
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+
+# ── Absolute path dựa trên vị trí file (không phụ thuộc CWD) ──
+_SRC_DIR = Path(__file__).resolve().parent          # chatbot/backend/src/
+_BACKEND_DIR = _SRC_DIR.parent                      # chatbot/backend/
+_DEFAULT_CHROMA_PATH = str(_SRC_DIR / 'chroma_db')  # chatbot/backend/src/chroma_db/
 
 _CACHE_TTL = int(os.getenv('SEARCH_CACHE_TTL', '300'))
 _search_cache: Dict[str, dict] = {}
@@ -35,7 +44,7 @@ def _invalidate_cache():
 
 class Config:
     COLLECTION_NAME: str = os.getenv('COLLECTION_NAME', 'vsl_knowledge_base')
-    CHROMA_PATH: str = os.getenv('CHROMA_PATH', './chroma_db')
+    CHROMA_PATH: str = os.getenv('CHROMA_PATH', _DEFAULT_CHROMA_PATH)
     EMBEDDING_MODEL: str = 'paraphrase-multilingual-MiniLM-L12-v2'
     TOP_K: int = int(os.getenv('CHROMA_TOP_K', '3'))            # giảm 5→3
     CHROMA_CACHE_TTL: int = int(os.getenv('CHROMA_CACHE_TTL', '300'))  # 5 phút
@@ -52,7 +61,10 @@ class Config:
 class ChromaRetriever:
     def __init__(self, config: Config):
         self.config = config
-        self.client = chromadb.PersistentClient(path=config.CHROMA_PATH)
+        resolved_path = str(Path(config.CHROMA_PATH).resolve())
+        logger.info(f"ChromaDB path: {resolved_path}")
+        self.client = chromadb.PersistentClient(path=resolved_path)
+        _chroma_clients.append(self.client)  # track for cleanup
         self.embedding_func = SentenceTransformerEmbeddingFunction(
             model_name=config.EMBEDDING_MODEL,
             device=config.DEVICE
@@ -72,6 +84,70 @@ class ChromaRetriever:
                 logger.warning(f"Collection '{self.config.COLLECTION_NAME}' not found: {e}")
                 self._collection = None
         return self._collection
+
+    @staticmethod
+    def _extract_search_word(query: str) -> str | None:
+        """Trích xuất từ cần tra từ câu query.
+
+        Ví dụ: 'ký hiệu cha' → 'cha', 'từ cha trong VSL' → 'cha', 'cha' → 'cha'
+        """
+        q = query.strip().lower()
+
+        # Pattern 1: 'ký hiệu X', 'từ X', 'cách ký X', 'dấu hiệu X', ...
+        prefix_patterns = [
+            r'(?:ký hiệu|từ|chữ|dấu hiệu|cách ký|cách đánh|động tác)\s+(.+?)(?:\s+trong|\s+là|\s*có|\s*$|$)',
+            r'(?:làm thế nào để ký|thể hiện)\s+(.+?)(?:\s*$|$)',
+        ]
+        for p in prefix_patterns:
+            m = re.search(p, q)
+            if m:
+                word = m.group(1).strip().split()[0] if m.group(1).strip() else None
+                if word and len(word) >= 1:
+                    return word
+
+        # Pattern 2: query 1 từ đơn thuần
+        words = q.split()
+        if len(words) == 1:
+            return words[0]
+
+        # Pattern 3: query 2 từ, có thể là 'từ cha' pattern
+        if len(words) == 2:
+            # Nếu một trong hai từ là từ khóa ngữ pháp → lấy từ còn lại
+            stop_words = {'từ', 'chữ', 'của', 'và', 'với', 'trong', 'các', 'những'}
+            if words[0] in stop_words:
+                return words[1]
+            if words[1] in stop_words:
+                return words[0]
+            # Query 2 từ thông thường → thử cả query
+            return q
+
+        # Pattern 4: query dài → tìm từ cuối cùng (thường là từ cần tra)
+        # 'cha trong VSL', 'từ cha đi' → 'cha'
+        last_word = words[-1]
+        if last_word not in {'vsl', 'trong', 'là', 'có', 'và', 'của'}:
+            return last_word
+
+        return words[0] if words else None
+
+    @staticmethod
+    def _is_noise(text: str) -> bool:
+        """Kiểm tra text có phải noise (page number, header rỗng, ...) không."""
+        t = text.strip()
+        if not t:
+            return True
+        # Toàn số, dấu câu, khoảng trắng
+        if all(c in '0123456789.,;:!?()[]-–— \t\n\r.' for c in t):
+            return True
+        # Quá ngắn (< 10 ký tự có nghĩa)
+        meaningful = sum(1 for c in t if c.isalpha())
+        if meaningful < 5:
+            return True
+        # Header phổ biến từ PDF
+        noise_headers = ['các tác giả', 'mục lục', 'lời nói đầu', 'lời mở đầu',
+                         'phụ lục', 'tài liệu tham khảo', 'danh mục', 'bảng']
+        if t.lower().strip() in noise_headers:
+            return True
+        return False
 
     def search(self, query: str, top_k: Optional[int] = None) -> Dict:
         k = top_k or self.config.TOP_K
@@ -95,36 +171,79 @@ class ChromaRetriever:
             }
 
         try:
-            results = col.query(
+            all_results = []
+            seen_texts = set()
+            search_word = self._extract_search_word(query)
+
+            # ── Phase 1: Exact word match (từ JSON từ điển) ──
+            if search_word:
+                try:
+                    exact_results = col.query(
+                        query_texts=[query],
+                        n_results=max(k * 2, 10),
+                        where={'word': search_word},
+                        include=['documents', 'metadatas', 'distances']
+                    )
+                    if exact_results['documents'] and exact_results['documents'][0]:
+                        for doc, meta, dist in zip(
+                            exact_results['documents'][0],
+                            exact_results['metadatas'][0],
+                            exact_results['distances'][0]
+                        ):
+                            score = 1.0 - dist if dist <= 1.0 else 0.0
+                            # Exact word match luôn đáng tin, dùng threshold thấp hơn
+                            if score >= 0.15:
+                                key = doc[:100]  # dedup
+                                if key not in seen_texts:
+                                    seen_texts.add(key)
+                                    all_results.append({
+                                        'text': doc,
+                                        'source': meta.get('source', 'JSON'),
+                                        'page': meta.get('page', 'N/A'),
+                                        'score': score + 0.5,  # boost cho exact match
+                                    })
+                                    logger.info(f"Exact word match: '{search_word}' (score boosted: {score + 0.5:.3f})")
+                except Exception as e:
+                    logger.warning(f"Exact word match error: {e}")
+
+            # ── Phase 2: Vector search (với noise filtering) ──
+            vec_results = col.query(
                 query_texts=[query],
-                n_results=k,
+                n_results=k * 3,  # lấy nhiều hơn để lọc noise
                 include=['documents', 'metadatas', 'distances']
             )
 
-            if not results['documents'] or not results['documents'][0]:
+            if vec_results['documents'] and vec_results['documents'][0]:
+                for doc, meta, dist in zip(
+                    vec_results['documents'][0],
+                    vec_results['metadatas'][0],
+                    vec_results['distances'][0]
+                ):
+                    score = 1.0 - dist if dist <= 1.0 else 0.0
+                    # Lọc noise
+                    if self._is_noise(doc):
+                        continue
+                    key = doc[:100]
+                    if key not in seen_texts:
+                        seen_texts.add(key)
+                        all_results.append({
+                            'text': doc,
+                            'source': meta.get('source', 'N/A'),
+                            'page': meta.get('page', 'N/A'),
+                            'score': score,
+                        })
+
+            # Sắp xếp theo score, lấy top_k
+            all_results.sort(key=lambda x: x['score'], reverse=True)
+            top_results = all_results[:k]
+
+            if not top_results:
                 return {
                     'context': 'Không tìm thấy thông tin liên quan.',
                     'source': self.config.COLLECTION_NAME,
                     'results': [],
                     'top_score': 0.0
                 }
-
-            scored_results = []
-            for i, (doc, meta, dist) in enumerate(zip(
-                results['documents'][0],
-                results['metadatas'][0],
-                results['distances'][0]
-            )):
-                score = 1.0 - dist if dist <= 1.0 else 0.0
-                scored_results.append({
-                    'text': doc,
-                    'source': meta.get('source', 'N/A'),
-                    'page': meta.get('page', 'N/A'),
-                    'score': score,
-                })
-
-            scored_results.sort(key=lambda x: x['score'], reverse=True)
-            top_results = scored_results[:k]
 
             context_parts = [
                 f"[{i+1}] Score: {r['score']:.3f} | Source: {r['source']}\n{r['text']}"
@@ -377,6 +496,9 @@ _chroma_retriever_instance: Optional[ChromaRetriever] = None
 _web_searcher_instance: Optional[WebSearcher] = None
 _vsl_restructurer_instance: Optional[VSL_Restructurer] = None
 
+# ChromaDB client(s) cần cleanup — lưu riêng để đóng chính xác
+_chroma_clients: list[chromadb.PersistentClient] = []
+
 
 def get_config() -> Config:
     global _config_instance
@@ -423,9 +545,11 @@ def preload():
 
 
 async def cleanup():
-    global _web_searcher_instance, _vsl_restructurer_instance
+    global _web_searcher_instance, _vsl_restructurer_instance, \
+           _chroma_retriever_instance, _chroma_clients
     logger.info("Tools cleanup...")
 
+    # 1. Đóng HTTP clients (WebSearcher, VSL_Restructurer)
     if _web_searcher_instance is not None:
         try:
             await _web_searcher_instance.close()
@@ -440,7 +564,83 @@ async def cleanup():
             logger.warning(f"Lỗi cleanup vsl restructurer: {e}")
         _vsl_restructurer_instance = None
 
+    # 2. Đóng ChromaDB clients
+    for client in _chroma_clients:
+        try:
+            # ChromaDB's PersistentClient không có close() rõ ràng,
+            # nhưng xoá reference để GC giải phóng file handles + mmap
+            del client
+        except Exception as e:
+            logger.warning(f"Lỗi cleanup chroma client: {e}")
+    _chroma_clients.clear()
+    _chroma_retriever_instance = None
+
+    # 3. Clear tất cả cache
+    _search_cache.clear()
+    logger.info("All search caches cleared.")
+
     logger.info("Tools cleanup done.")
+
+
+def cleanup_sync():
+    """Phiên bản synchronous cho các context không có event loop."""
+    global _web_searcher_instance, _vsl_restructurer_instance, \
+           _chroma_retriever_instance, _chroma_clients
+
+    _search_cache.clear()
+
+    for client in _chroma_clients:
+        try:
+            del client
+        except Exception:
+            pass
+    _chroma_clients.clear()
+    _chroma_retriever_instance = None
+    _web_searcher_instance = None
+    _vsl_restructurer_instance = None
+    logger.info("Tools cleanup_sync done.")
+
+
+def release_port(port: int, host: str = "0.0.0.0"):
+    """Giải phóng port đang chiếm giữ bằng cách:
+    1. Tìm PID đang listen trên port đó
+    2. Gửi SIGTERM → chờ → SIGKILL nếu cần
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["fuser", "-k", f"{port}/tcp"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            logger.info(f"Port {port} released via fuser.")
+            return
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.warning(f"fuser on port {port} failed: {e}")
+
+    # Fallback: lsof
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.stdout.strip():
+            pids = result.stdout.strip().split()
+            for pid in pids:
+                try:
+                    os.kill(int(pid), signal.SIGTERM)
+                    logger.info(f"Sent SIGTERM to PID {pid} on port {port}")
+                except ProcessLookupError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"Kill PID {pid} on port {port} error: {e}")
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.warning(f"lsof on port {port} failed: {e}")
+    logger.info(f"Port {port} release attempted.")
 
 
 def get_qa_retriever(query: str, top_k: Optional[int] = None) -> Dict:

@@ -2,9 +2,11 @@ import os
 import re
 import json
 import asyncio
+import signal
 import inspect
 import logging
 from dataclasses import dataclass, field
+from contextlib import suppress
 from openai import OpenAI
 from dotenv import load_dotenv
 import Tools
@@ -20,7 +22,8 @@ class Config:
     LLM_TIMEOUT = float(os.getenv('LLM_TIMEOUT', '30.0'))
     MAX_CONTEXT_TURNS = int(os.getenv('MAX_CONTEXT_TURNS', '3'))
     CHROMA_TOP_K = int(os.getenv('CHROMA_TOP_K', '3'))         
-    CHROMA_MIN_SCORE = float(os.getenv('CHROMA_MIN_SCORE', '0.5')) 
+    CHROMA_MIN_SCORE = float(os.getenv('CHROMA_MIN_SCORE', '0.5'))
+    SHUTDOWN_TIMEOUT = float(os.getenv('SHUTDOWN_TIMEOUT', '10.0'))
 
 config = Config()
 
@@ -29,6 +32,34 @@ client = OpenAI(
     base_url=config.OPENAI_BASE_URL,
     timeout=config.LLM_TIMEOUT,
 )
+
+# ── Graceful shutdown tracking ──
+_shutting_down = False
+_inflight_tasks: set[asyncio.Task] = set()
+_shutdown_event = asyncio.Event()
+
+
+def _track_task(task: asyncio.Task) -> None:
+    """Theo dõi task đang chạy để có thể cancel khi shutdown."""
+    _inflight_tasks.add(task)
+    task.add_done_callback(_inflight_tasks.discard)
+
+
+def is_shutting_down() -> bool:
+    return _shutting_down
+
+
+async def wait_for_inflight(timeout: float = 5.0) -> int:
+    """Chờ các task đang chạy hoàn tất, trả về số task còn lại nếu timeout."""
+    if not _inflight_tasks:
+        return 0
+    remaining = list(_inflight_tasks)
+    done, pending = await asyncio.wait(remaining, timeout=timeout)
+    for t in pending:
+        t.cancel()
+        with suppress(asyncio.CancelledError):
+            await t
+    return len(pending)
 
 _FALLBACK_TOOL_SCHEMAS = [
     {
@@ -410,6 +441,12 @@ def _safe_answer(text: str) -> str:
 
 async def run_query(query: str, conversation_history: list = None) -> dict:
     """Single-pass: heuristic → parallel tools → 1 LLM call. Không tool schemas."""
+    if is_shutting_down():
+        return {
+            "answer": "Hệ thống đang tắt, vui lòng thử lại sau.",
+            "tools_used": [],
+            "links": [],
+        }
     try:
         # ── Phase 1: Analyze intent ──
         intent = QueryAnalyzer.analyze(query)
@@ -462,6 +499,11 @@ async def run_query_streaming(query: str, conversation_history: list = None):
     LLM-based routing: gọi LLM để quyết định tool, execute, rồi stream kết quả.
     2-pass: (1) non-streaming xác định tool → (2) streaming câu trả lời.
     """
+    if is_shutting_down():
+        yield {"type": "token", "content": "Hệ thống đang tắt, vui lòng thử lại sau."}
+        yield {"type": "_done", "tools_used": [], "links": []}
+        return
+
     tool_results = OrchestratedResult()
     try:
 
@@ -549,8 +591,30 @@ def preload_embedding_model():
 
 
 async def cleanup():
-    logger.info("Cleaning up resources...")
+    """Giải phóng toàn bộ tài nguyên hệ thống."""
+    global _shutting_down
+    _shutting_down = True
+    logger.info("=== System cleanup started ===")
+
+    # 1. Chờ in-flight tasks hoàn tất (có timeout)
+    remaining = await wait_for_inflight(config.SHUTDOWN_TIMEOUT / 2)
+    if remaining > 0:
+        logger.warning(f"{remaining} in-flight tasks cancelled on shutdown.")
+
+    # 2. Đóng OpenAI HTTP client
+    try:
+        client.close()
+        logger.info("OpenAI client closed.")
+    except Exception as e:
+        logger.warning(f"OpenAI client close error: {e}")
+
+    # 3. Cleanup Tools (HTTP clients, ChromaDB, caches)
     await Tools.cleanup()
+
+    # 4. Đánh dấu shutdown hoàn tất
+    _shutdown_event.set()
+    _inflight_tasks.clear()
+    logger.info("=== System cleanup done ===")
 
 
 
