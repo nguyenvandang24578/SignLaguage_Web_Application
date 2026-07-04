@@ -161,4 +161,3 @@ async def close():
                 logger.warning(f"SQLite close error: {e}")
             _pool = None
 
-
