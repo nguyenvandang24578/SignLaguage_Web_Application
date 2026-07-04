@@ -66,25 +66,11 @@ _FALLBACK_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_qa_retriever",
-            "description": "Tra cứu từ cơ sở tri thức VSL (ChromaDB) gồm sách PDF về VSL và từ điển ký hiệu VSL.",
+            "description": "CHỈ dùng khi người dùng hỏi về ký hiệu của một từ cụ thể (ví dụ: 'ký hiệu con chó', 'từ cha trong VSL', 'thể hiện từ mẹ thế nào'). Không dùng cho câu hỏi chào hỏi, giới thiệu, hay câu thông thường.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Câu hỏi cần tra cứu"}
-                },
-                "required": ["query"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_web_search",
-            "description": "Tìm kiếm thông tin trên internet (tin tức, thông tin mới, số liệu thực tế).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Từ khóa tìm kiếm"}
+                    "query": {"type": "string", "description": "Câu hỏi của người dùng về ký hiệu từ vựng"}
                 },
                 "required": ["query"]
             }
@@ -94,13 +80,27 @@ _FALLBACK_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "vsl_restruct",
-            "description": "Chuyển đổi câu tiếng Việt hoàn chỉnh sang cấu trúc ngữ pháp VSL.",
+            "description": "CHỈ dùng khi người dùng yêu cầu chuyển đổi một câu tiếng Việt sang cấu trúc ngữ pháp VSL (S-P-O). Ví dụ: 'chuyển câu tôi đi ăn sang VSL', 'sắp xếp câu này theo VSL'. KHÔNG dùng cho câu hỏi thông thường, giới thiệu, hay hỏi về ký hiệu từ.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "text": {"type": "string", "description": "Câu tiếng Việt cần chuyển đổi"}
+                    "text": {"type": "string", "description": "Câu tiếng Việt cần chuyển đổi sang cấu trúc VSL"}
                 },
                 "required": ["text"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_web_search",
+            "description": "CHỈ dùng khi người dùng hỏi về tin tức, thông tin mới, số liệu cập nhật, sự kiện hiện tại. KHÔNG dùng cho câu hỏi về VSL hay chào hỏi.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Từ khóa tìm kiếm trên internet"}
+                },
+                "required": ["query"]
             }
         }
     },
@@ -396,14 +396,21 @@ SYSTEM_PROMPT = (
 
     "1) Nếu có === TRA CỨU TỪ ĐIỂN VSL ===:\n"
     "   - Dùng nguyên văn mô tả ký hiệu tìm được, kèm Loại và Khu vực nếu có.\n"
-    "   - Nếu không có kết quả phù hợp, trả lời: 'Chưa có dữ liệu về ký hiệu này'.\n\n"
+    "   - Nếu không có kết quả phù hợp, trả lời: 'Chưa có dữ liệu về ký hiệu này'.\n"
+    "   - Giải thích thêm cho người học: paraphrase lại mô tả bằng lời tự nhiên, nói rõ cách thực hiện ký hiệu.\n\n"
 
     "2) Nếu có === CHUYỂN ĐỔI CẤU TRÚC VSL ===:\n"
     "   - Đây là nhánh CHỈ dùng khi người dùng yêu cầu chuyển một câu tiếng Việt "
     "sang cấu trúc ngữ pháp VSL (ví dụ: 'câu này viết theo VSL thế nào', "
-    "'chuyển sang ngữ pháp ký hiệu').\n"
+    "'chuyển sang ngữ pháp ký hiệu', 'làm thế nào để nói ...').\n"
+    "   - KHÔNG dùng nhánh này cho câu giới thiệu bản thân đơn thuần như 'tôi tên là X', "
+    "'tôi là Y', vì đó là giao tiếp thông thường, không phải yêu cầu chuyển đổi cấu trúc.\n"
     "   - Dùng kết quả được cung cấp, đối chiếu với ngữ pháp VSL dưới đây, "
-    "rồi giải thích ngắn gọn vì sao câu được sắp xếp như vậy.\n\n"
+    "rồi giải thích NGẮN GỌN nhưng ĐẦY ĐỦ: đưa ra câu VSL, nói rõ vì sao sắp xếp như vậy "
+    "(chủ ngữ - tân ngữ - động từ), từ nào bị lược bỏ và tại sao.\n"
+    "   - Ví dụ: 'Câu \"tôi đi ăn\" trong VSL được sắp xếp là: tôi / ăn / đi. "
+    "Trong VSL, thứ tự là Chủ ngữ - Tân ngữ - Động từ, nên \"tôi\" đứng trước, "
+    "\"ăn\" ở giữa, \"đi\" ở cuối. Động từ \"đi\" được chuyển xuống cuối câu.'\n\n"
 
     "3) Nếu có === TÌM KIẾM WEB ===:\n"
     "   - Tổng hợp lại bằng lời văn của bạn, không kèm link hay nói 'theo nguồn...'.\n\n"
@@ -511,7 +518,7 @@ async def run_query(query: str, conversation_history: list = None) -> dict:
 
 async def run_query_streaming(query: str, conversation_history: list = None):
     """
-    LLM-based routing: gọi LLM để quyết định tool, execute, rồi stream kết quả.
+    Hybrid routing: heuristic pre-filter → LLM quyết định tool → stream.
     2-pass: (1) non-streaming xác định tool → (2) streaming câu trả lời.
     """
     if is_shutting_down():
@@ -521,51 +528,61 @@ async def run_query_streaming(query: str, conversation_history: list = None):
 
     tool_results = OrchestratedResult()
     try:
-
         yield {"type": "info", "content": "Đang phân tích câu hỏi..."}
+
+        # ── Bước 0: Heuristic pre-filter ──
+        # Nếu heuristic chắc chắn là greeting (confidence=1.0) → skip tool, stream luôn
+        # Còn lại → để LLM quyết định tool
+        heuristic_intent = QueryAnalyzer.analyze(query)
+        needs_tool_call = not (heuristic_intent.confidence == 1.0 and not heuristic_intent.tools)
 
         messages = _build_messages(query, conversation_history)
 
-        response = client.chat.completions.create(
-            model=config.OPENAI_MODEL,
-            messages=messages,
-            tools=_FALLBACK_TOOL_SCHEMAS,
-            tool_choice="auto",
-            temperature=0.7,
-            max_tokens=config.MAX_OUTPUT_TOKENS,
-        )
+        if needs_tool_call:
+            # ── Bước 1: LLM quyết định tool (chỉ khi heuristic nghi ngờ cần tool) ──
+            response = client.chat.completions.create(
+                model=config.OPENAI_MODEL,
+                messages=messages,
+                tools=_FALLBACK_TOOL_SCHEMAS,
+                tool_choice="auto",
+                temperature=0.7,
+                max_tokens=config.MAX_OUTPUT_TOKENS,
+            )
 
-        choice = response.choices[0]
-        msg = choice.message
+            choice = response.choices[0]
+            msg = choice.message
 
-        if msg.tool_calls:
-            yield {"type": "info", "content": "Đang tra cứu thông tin..."}
+            if msg.tool_calls:
+                yield {"type": "info", "content": "Đang tra cứu thông tin..."}
 
-            for tc in msg.tool_calls:
-                func_name = tc.function.name
-                try:
-                    func_args = json.loads(tc.function.arguments)
-                except json.JSONDecodeError:
-                    func_args = {}
+                for tc in msg.tool_calls:
+                    func_name = tc.function.name
+                    try:
+                        func_args = json.loads(tc.function.arguments)
+                    except json.JSONDecodeError:
+                        func_args = {}
 
-                tool_result = await _execute_tool_rich(func_name, func_args)
-                tool_results.tools_used.append(func_name)
-                tool_results.all_links.extend(tool_result.get("links", []))
+                    tool_result = await _execute_tool_rich(func_name, func_args)
+                    tool_results.tools_used.append(func_name)
+                    tool_results.all_links.extend(tool_result.get("links", []))
 
-                messages.append({
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [tc],
-                })
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": tool_result["content"],
-                })
+                    messages.append({
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [tc],
+                    })
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": tool_result["content"],
+                    })
 
-            yield {"type": "info", "content": "Đang tổng hợp câu trả lời..."}
+                yield {"type": "info", "content": "Đang tổng hợp câu trả lời..."}
+        else:
+            # Không cần tool → stream trực tiếp, không có initial content
+            initial_content = None
 
-
+        # ── Bước 2: Stream câu trả lời ──
         stream = client.chat.completions.create(
             model=config.OPENAI_MODEL,
             messages=messages,
@@ -575,7 +592,7 @@ async def run_query_streaming(query: str, conversation_history: list = None):
         )
 
         has_content = False
-        if msg.content:
+        if needs_tool_call and msg.content:
             has_content = True
             yield {"type": "token", "content": msg.content}
 
