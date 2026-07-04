@@ -52,7 +52,7 @@ class Config:
     SERPAPI_KEY: str = os.getenv('SERPAPI_KEY')
     LLAMA_SERVER_URL: str = os.getenv('LLAMA_SERVER_URL')
 
-    WEB_SEARCH_TIMEOUT: float = 10.0
+    WEB_SEARCH_TIMEOUT: float = 15.0
     LLAMA_TIMEOUT: float = 30.0
 
     DEVICE: str = 'cuda' if torch.cuda.is_available() else 'cpu'
