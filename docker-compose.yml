@@ -19,14 +19,11 @@ services:
     env_file:
       - ./chatbot/backend/.env
     volumes:
-      # Lưu chat history và vector database ra ngoài để không mất khi restart
       - vsl_chat_history:/app/chat_history
-      - vsl_chroma_db:/app/chroma_db
     environment:
-      - CHROMA_PATH=/app/chroma_db
       - DB_PATH=/app/chat_history/chat.db
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status == 200 else 1)"]
       interval: 30s
       timeout: 5s
       start_period: 30s
@@ -64,4 +61,3 @@ networks:
 
 volumes:
   vsl_chat_history:
-  vsl_chroma_db:

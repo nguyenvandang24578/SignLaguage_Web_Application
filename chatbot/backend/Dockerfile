@@ -27,8 +27,8 @@ COPY --from=builder /install /usr/local
 # Copy source code
 COPY src/ /app/src/
 
-# Tạo thư mục data trước khi đổi user
-RUN mkdir -p /app/data /app/chat_history /app/chroma_db && chown -R appuser:appuser /app
+# Tạo thư mục data (chroma_db đã có trong src/ nhờ COPY)
+RUN mkdir -p /app/data /app/chat_history && chown -R appuser:appuser /app
 
 USER appuser
 
@@ -38,6 +38,6 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"] || exit 1
+    CMD python -c "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status == 200 else 1)"
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
