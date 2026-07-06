@@ -117,7 +117,10 @@ async def chat_endpoint(req: ChatRequest):
     if not response_text or not response_text.strip():
         response_text = "Xin lỗi, hệ thống AI tạm thời không khả dụng. Vui lòng thử lại sau."
 
-    await ChatHistory.append_messages(session, req.message, response_text)
+    await ChatHistory.append_messages(
+        session, req.message, response_text,
+        tools_used=tools_used, links=links,
+    )
 
     logger.info(f"Completed query for session {session_id} ({len(tools_used)} tools)")
 
@@ -157,13 +160,18 @@ async def chat_stream(req: ChatRequest):
                     full_response += event["content"]
                     yield f"data: {json.dumps(event)}\n\n"
                 elif event.get("type") == "_done":
+                    tools_used = event.get('tools_used', [])
+                    links = event.get('links', [])
                     if full_response.strip():
-                        await ChatHistory.append_messages(session, req.message, full_response)
+                        await ChatHistory.append_messages(
+                            session, req.message, full_response,
+                            tools_used=tools_used, links=links,
+                        )
                     done_event = {
                         'type': 'done',
                         'session_id': session_id,
-                        'tools_used': event.get('tools_used', []),
-                        'links': event.get('links', []),
+                        'tools_used': tools_used,
+                        'links': links,
                     }
                     yield f"data: {json.dumps(done_event)}\n\n"
 

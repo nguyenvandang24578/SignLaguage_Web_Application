@@ -19,7 +19,7 @@ class Config:
     OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
     MAX_OUTPUT_TOKENS = int(os.getenv('MAX_OUTPUT_TOKENS', '1024'))
     LLM_TIMEOUT = float(os.getenv('LLM_TIMEOUT', '30.0'))
-    MAX_CONTEXT_TURNS = int(os.getenv('MAX_CONTEXT_TURNS', '3'))
+    MAX_CONTEXT_TURNS = int(os.getenv('MAX_CONTEXT_TURNS', '5'))
     CHROMA_TOP_K = int(os.getenv('CHROMA_TOP_K', '3'))         
     CHROMA_MIN_SCORE = float(os.getenv('CHROMA_MIN_SCORE', '0.5'))
     SHUTDOWN_TIMEOUT = float(os.getenv('SHUTDOWN_TIMEOUT', '10.0'))
@@ -65,7 +65,7 @@ VSL_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_qa_retriever",
-            "description": "Dùng khi người dùng hỏi về ký hiệu / cách đánh / cách mô tả một từ cụ thể trong ngôn ngữ ký hiệu (VSL). Ví dụ: 'ký hiệu con chó', 'từ cha trong VSL', 'thể hiện từ mẹ thế nào', 'cách mô tả từ anh trai'. Luôn cung cấp search_word là từ/cụm từ chính xác cần tra.",
+            "description": "Tra cứu thông tin về ngôn ngữ ký hiệu Việt Nam (VSL) từ cơ sở tri thức. Dùng cho: (1) hỏi về ký hiệu / cách đánh / cách mô tả một từ cụ thể (vd: 'ký hiệu con chó', 'từ mẹ trong VSL'), (2) hỏi kiến thức chung về VSL, người khiếm thính, văn hóa điếc (vd: 'ngôn ngữ ký hiệu là gì', 'cộng đồng khiếm thính Việt Nam'), (3) bất kỳ câu hỏi nào liên quan đến VSL và người khiếm thính.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -75,10 +75,10 @@ VSL_TOOL_SCHEMAS = [
                     },
                     "search_word": {
                         "type": "string",
-                        "description": "TỪ/CỤM TỪ CHÍNH XÁC cần tra ký hiệu, ví dụ: 'mẹ', 'con chó', 'anh trai', 'yêu thương', 'ngọn núi'. Đây là tham số quan trọng nhất để tra cứu chính xác."
+                        "description": "[TÙY CHỌN] TỪ/CỤM TỪ CHÍNH XÁC cần tra ký hiệu, ví dụ: 'mẹ', 'con chó', 'anh trai'. Chỉ cung cấp nếu người dùng hỏi về ký hiệu của một từ cụ thể. Nếu là câu hỏi chung, không cần tham số này."
                     }
                 },
-                "required": ["query", "search_word"]
+                "required": ["query"]
             }
         }
     },
@@ -86,7 +86,7 @@ VSL_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "vsl_restruct",
-            "description": "Dùng khi người dùng yêu cầu chuyển đổi một câu tiếng Việt sang cấu trúc ngữ pháp VSL (S-P-O). Ví dụ: 'chuyển câu tôi đi ăn sang VSL', 'sắp xếp câu này theo VSL'.",
+            "description": "Dùng khi người dùng yêu cầu chuyển đổi một câu tiếng Việt sang cấu trúc ngữ pháp VSL (S-O-P). Ví dụ: 'chuyển câu tôi đi ăn sang VSL', 'sắp xếp câu này theo VSL'.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -100,7 +100,7 @@ VSL_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_web_search",
-            "description": "Dùng khi người dùng hỏi về tin tức, thông tin mới, số liệu cập nhật, sự kiện hiện tại.",
+            "description": "Tìm kiếm thông tin trên internet. Dùng khi người dùng hỏi về: (1) tin tức, sự kiện hiện tại, số liệu cập nhật, (2) thông tin thực tế, số liệu thống kê, dữ liệu mới nhất (vd: 'quy mô cộng đồng khiếm thính', 'bao nhiêu người điếc ở Việt Nam'), (3) bất kỳ câu hỏi nào cần tra cứu thông tin ngoài kiến thức của bạn.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -255,19 +255,25 @@ SYSTEM_PROMPT = (
     "'chuyển sang ngữ pháp ký hiệu', 'làm thế nào để nói ...').\n"
     "   - KHÔNG dùng nhánh này cho câu giới thiệu bản thân đơn thuần như 'tôi tên là X', "
     "'tôi là Y', vì đó là giao tiếp thông thường, không phải yêu cầu chuyển đổi cấu trúc.\n"
-    "   - Dùng kết quả được cung cấp, đối chiếu với ngữ pháp VSL dưới đây, "
-    "rồi giải thích NGẮN GỌN nhưng ĐẦY ĐỦ: đưa ra câu VSL, nói rõ vì sao sắp xếp như vậy "
-    "(chủ ngữ - tân ngữ - động từ), từ nào bị lược bỏ và tại sao.\n"
-    "   - Ví dụ: 'Câu \"tôi đi ăn\" trong VSL được sắp xếp là: tôi / ăn / đi. "
-    "Trong VSL, thứ tự là Chủ ngữ - Tân ngữ - Động từ, nên \"tôi\" đứng trước, "
-    "\"ăn\" ở giữa, \"đi\" ở cuối. Động từ \"đi\" được chuyển xuống cuối câu.'\n\n"
+    "   - Bước 1 — TRÍCH XUẤT: Lấy nguyên văn câu VSL từ kết quả tool, "
+    "hiển thị ở đầu câu trả lời dạng: 'Câu VSL: tôi / ăn / cơm'.\n"
+    "   - Bước 2 — KIỂM TRA: Đối chiếu với ngữ pháp VSL bên dưới. "
+    "Xác minh cấu trúc S-O-P, hư từ đã lược bỏ chưa, phủ định/câu hỏi xử lý đúng chưa. "
+    "Nếu tool bị lỗi → thông báo dịch vụ tạm không khả dụng và tự phân tích.\n"
+    "   - Bước 3 — GIẢI THÍCH: Giải thích ngắn gọn, tự nhiên: vì sao sắp xếp như vậy, "
+    "từ nào bị lược bỏ và tại sao.\n"
+    "   - Định dạng đầu ra: Xuống dòng giữa các bước, KHÔNG dùng dấu [] hay ký tự đặc biệt. "
+    "Viết liền mạch, tự nhiên như đang giảng giải cho người học.\n"
+    "   - Ví dụ:\n"
+    "Câu VSL: tôi / ăn / cơm\n\n"
+    "→ Câu này tuân theo cấu trúc Chủ ngữ - Tân ngữ - Động từ (S-O-P) của VSL.\n\n"
+    "→ Hư từ 'sẽ' và 'đang' đã được lược bỏ vì VSL không dùng từ nối, thời gian thể hiện qua ngữ cảnh.\n\n"
 
     "3) Nếu có === TÌM KIẾM WEB ===:\n"
     "   - Tổng hợp lại bằng lời văn của bạn, không kèm link hay nói 'theo nguồn...'.\n\n"
 
     "4) Nếu KHÔNG có bất kỳ nhãn === ... === nào ở trên (ví dụ: chào hỏi, "
-    "hỏi bạn là ai, giới thiệu bản thân, hỏi kiến thức chung về VSL, "
-    "trò chuyện thông thường):\n"
+    "hỏi bạn là ai, giới thiệu bản thân, trò chuyện thông thường):\n"
     "   - Trả lời trực tiếp bằng tiếng Việt tự nhiên như một trợ lý bình thường.\n"
     "   - TUYỆT ĐỐI không áp cấu trúc ngữ pháp VSL (S-O-P, bỏ từ nối...) vào câu trả lời "
     "trong trường hợp này. Cấu trúc VSL chỉ áp dụng cho nhánh (2).\n\n"
@@ -312,7 +318,7 @@ def _safe_answer(text: str) -> str:
 
 
 async def run_query(query: str, conversation_history: list = None) -> dict:
-    """LLM quyết định tool → execute → trả lời."""
+    """LLM quyết định tool → execute → trả lời (dùng chuẩn OpenAI tool messages)."""
     if is_shutting_down():
         return {
             "answer": "Hệ thống đang tắt, vui lòng thử lại sau.",
@@ -339,26 +345,36 @@ async def run_query(query: str, conversation_history: list = None) -> dict:
 
         # ── Phase 2: Execute tool nếu LLM yêu cầu ──
         if msg.tool_calls:
-            tools_args = {}
             for tc in msg.tool_calls:
                 try:
                     func_args = json.loads(tc.function.arguments)
                 except json.JSONDecodeError:
                     func_args = {}
-                tools_args[tc.function.name] = func_args
 
-            tool_results = await ToolOrchestrator.execute(tools_args)
+                # Execute tool
+                tool_result = await _execute_tool_rich(tc.function.name, func_args)
+                tool_results.tools_used.append(tc.function.name)
+                tool_results.all_links.extend(tool_result.get("links", []))
 
-            # Build messages với tool context
-            messages = _build_messages(
-                query=query,
-                conversation_history=conversation_history,
-                tool_context=tool_results.fused_context or None,
-            )
+                # Wrap content với label để LLM nhận biết nhánh
+                labeled_content = tool_result["content"]
+                if labeled_content.strip():
+                    labeled_content = _wrap_tool_result(tc.function.name, labeled_content)
+
+                # Gắn assistant message + tool message theo đúng chuẩn OpenAI
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [tc],
+                })
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": labeled_content,
+                })
 
         # ── Phase 3: Generate final answer ──
         if msg.tool_calls:
-            # Cần gọi LLM lại để tổng hợp câu trả lời với tool context
             response = client.chat.completions.create(
                 model=config.OPENAI_MODEL,
                 messages=messages,
@@ -454,8 +470,10 @@ async def run_query_streaming(query: str, conversation_history: list = None):
             stream=True,
         )
 
-        # Nếu LLM có content kèm theo tool call (trường hợp hiếm)
-        if msg.content:
+        # KHÔNG yield msg.content khi có tool_calls!
+        # Nếu LLM vừa gọi tool vừa trả lời (hiếm), đó là phản hồi thiếu context tool.
+        # Chỉ dùng nếu KHÔNG có tool (trả lời trực tiếp).
+        if not msg.tool_calls and msg.content:
             has_content = True
             yield {"type": "token", "content": msg.content}
 

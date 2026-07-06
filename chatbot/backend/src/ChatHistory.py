@@ -109,10 +109,17 @@ async def _save_session(session: dict):
     await pool.commit()
 
 
-async def append_messages(session: dict, user_query: str, bot_response: str) -> dict:
+async def append_messages(session: dict, user_query: str, bot_response: str,
+                          tools_used: list | None = None, links: list | None = None) -> dict:
     now = _now()
     session["messages"].append({"role": "user",      "content": user_query,   "timestamp": now})
-    session["messages"].append({"role": "assistant",  "content": bot_response, "timestamp": now})
+    session["messages"].append({
+        "role": "assistant",
+        "content": bot_response,
+        "timestamp": now,
+        "tools_used": tools_used or [],
+        "links": links or [],
+    })
     session["turn_count"] = len(session["messages"]) // 2
 
     if session["turn_count"] == 1:

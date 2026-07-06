@@ -273,7 +273,11 @@ async function loadSession(sessionId) {
     if (!msgs.length) {
       showWelcome();
     } else {
-      msgs.forEach((m) => appendMessage(m.role, m.content));
+      msgs.forEach((m) => {
+        const tools = m.tools_used || [];
+        const links = m.links || [];
+        appendMessage(m.role, m.content, tools, null, links);
+      });
     }
     await loadSessionList();
   } catch (_) {
