@@ -1,8 +1,6 @@
 import os
-import re
 import time
 import torch
-import socket
 import signal
 import logging
 from pathlib import Path
@@ -86,50 +84,6 @@ class ChromaRetriever:
         return self._collection
 
     @staticmethod
-    def _extract_search_word(query: str) -> str | None:
-        """Trích xuất từ cần tra từ câu query.
-
-        Ví dụ: 'ký hiệu cha' → 'cha', 'từ cha trong VSL' → 'cha', 'cha' → 'cha'
-        """
-        q = query.strip().lower()
-
-        # Pattern 1: 'ký hiệu X', 'từ X', 'cách ký X', 'dấu hiệu X', ...
-        prefix_patterns = [
-            r'(?:ký hiệu|từ|chữ|dấu hiệu|cách ký|cách đánh|động tác)\s+(.+?)(?:\s+trong|\s+là|\s*có|\s*$|$)',
-            r'(?:làm thế nào để ký|thể hiện)\s+(.+?)(?:\s*$|$)',
-        ]
-        for p in prefix_patterns:
-            m = re.search(p, q)
-            if m:
-                word = m.group(1).strip().split()[0] if m.group(1).strip() else None
-                if word and len(word) >= 1:
-                    return word
-
-        # Pattern 2: query 1 từ đơn thuần
-        words = q.split()
-        if len(words) == 1:
-            return words[0]
-
-        # Pattern 3: query 2 từ, có thể là 'từ cha' pattern
-        if len(words) == 2:
-            # Nếu một trong hai từ là từ khóa ngữ pháp → lấy từ còn lại
-            stop_words = {'từ', 'chữ', 'của', 'và', 'với', 'trong', 'các', 'những'}
-            if words[0] in stop_words:
-                return words[1]
-            if words[1] in stop_words:
-                return words[0]
-            # Query 2 từ thông thường → thử cả query
-            return q
-
-        # Pattern 4: query dài → tìm từ cuối cùng (thường là từ cần tra)
-        # 'cha trong VSL', 'từ cha đi' → 'cha'
-        last_word = words[-1]
-        if last_word not in {'vsl', 'trong', 'là', 'có', 'và', 'của'}:
-            return last_word
-
-        return words[0] if words else None
-
-    @staticmethod
     def _is_noise(text: str) -> bool:
         """Kiểm tra text có phải noise (page number, header rỗng, ...) không."""
         t = text.strip()
@@ -149,9 +103,9 @@ class ChromaRetriever:
             return True
         return False
 
-    def search(self, query: str, top_k: Optional[int] = None) -> Dict:
+    def search(self, query: str, top_k: Optional[int] = None, search_word: Optional[str] = None) -> Dict:
         k = top_k or self.config.TOP_K
-        cache_key = f"{query.strip().lower()}_{k}"
+        cache_key = f"{query.strip().lower()}_{k}_{search_word or ''}"
 
         # Check cache
         cached_entry = self._cache.get(cache_key)
@@ -173,18 +127,22 @@ class ChromaRetriever:
         try:
             all_results = []
             seen_texts = set()
-            search_word = self._extract_search_word(query)
+            # search_word được truyền từ WordExtractor (LLM) bên System.py
+            # Nếu None, bỏ qua Phase 1 exact match, chỉ chạy vector search
 
             # ── Phase 1: Exact word match (từ JSON từ điển) ──
             if search_word:
                 try:
+                    # Thử exact match với search_word gốc
                     exact_results = col.query(
                         query_texts=[query],
                         n_results=max(k * 2, 10),
                         where={'word': search_word},
                         include=['documents', 'metadatas', 'distances']
                     )
-                    if exact_results['documents'] and exact_results['documents'][0]:
+                    has_exact = (exact_results['documents']
+                                 and exact_results['documents'][0])
+                    if has_exact:
                         for doc, meta, dist in zip(
                             exact_results['documents'][0],
                             exact_results['metadatas'][0],
@@ -203,6 +161,37 @@ class ChromaRetriever:
                                         'score': score + 0.5,  # boost cho exact match
                                     })
                                     logger.info(f"Exact word match: '{search_word}' (score boosted: {score + 0.5:.3f})")
+
+                    # Fallback: nếu exact match không có kết quả và search_word có nhiều từ,
+                    # thử từ cuối cùng (thường là danh từ chính, VD: "núi" từ "ngọn núi")
+                    if not has_exact and len(search_word.split()) > 1:
+                        fallback_word = search_word.split()[-1]
+                        if fallback_word != search_word:
+                            logger.info(f"Exact match '{search_word}' không có, thử fallback: '{fallback_word}'")
+                            fallback_results = col.query(
+                                query_texts=[query],
+                                n_results=max(k * 2, 10),
+                                where={'word': fallback_word},
+                                include=['documents', 'metadatas', 'distances']
+                            )
+                            if fallback_results['documents'] and fallback_results['documents'][0]:
+                                for doc, meta, dist in zip(
+                                    fallback_results['documents'][0],
+                                    fallback_results['metadatas'][0],
+                                    fallback_results['distances'][0]
+                                ):
+                                    score = 1.0 - dist if dist <= 1.0 else 0.0
+                                    if score >= 0.15:
+                                        key = doc[:100]
+                                        if key not in seen_texts:
+                                            seen_texts.add(key)
+                                            all_results.append({
+                                                'text': doc,
+                                                'source': meta.get('source', 'JSON'),
+                                                'page': meta.get('page', 'N/A'),
+                                                'score': score + 0.4,  # boost thấp hơn 1 chút
+                                            })
+                                            logger.info(f"Fallback word match: '{fallback_word}' (score boosted: {score + 0.4:.3f})")
                 except Exception as e:
                     logger.warning(f"Exact word match error: {e}")
 
@@ -643,9 +632,9 @@ def release_port(port: int, host: str = "0.0.0.0"):
     logger.info(f"Port {port} release attempted.")
 
 
-def get_qa_retriever(query: str, top_k: Optional[int] = None) -> Dict:
+def get_qa_retriever(query: str, top_k: Optional[int] = None, search_word: Optional[str] = None) -> Dict:
     retriever = get_chroma_retriever()
-    return retriever.search(query, top_k=top_k)
+    return retriever.search(query, top_k=top_k, search_word=search_word)
 
 
 async def get_web_search(query: str) -> Dict:

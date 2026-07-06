@@ -1,5 +1,4 @@
 import os
-import re
 import json
 import asyncio
 import signal
@@ -61,18 +60,25 @@ async def wait_for_inflight(timeout: float = 5.0) -> int:
             await t
     return len(pending)
 
-_FALLBACK_TOOL_SCHEMAS = [
+VSL_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
             "name": "get_qa_retriever",
-            "description": "CHỈ dùng khi người dùng hỏi về ký hiệu của một từ cụ thể (ví dụ: 'ký hiệu con chó', 'từ cha trong VSL', 'thể hiện từ mẹ thế nào'). Không dùng cho câu hỏi chào hỏi, giới thiệu, hay câu thông thường.",
+            "description": "Dùng khi người dùng hỏi về ký hiệu / cách đánh / cách mô tả một từ cụ thể trong ngôn ngữ ký hiệu (VSL). Ví dụ: 'ký hiệu con chó', 'từ cha trong VSL', 'thể hiện từ mẹ thế nào', 'cách mô tả từ anh trai'. Luôn cung cấp search_word là từ/cụm từ chính xác cần tra.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Câu hỏi của người dùng về ký hiệu từ vựng"}
+                    "query": {
+                        "type": "string",
+                        "description": "Toàn bộ câu hỏi của người dùng (dùng để vector search)"
+                    },
+                    "search_word": {
+                        "type": "string",
+                        "description": "TỪ/CỤM TỪ CHÍNH XÁC cần tra ký hiệu, ví dụ: 'mẹ', 'con chó', 'anh trai', 'yêu thương', 'ngọn núi'. Đây là tham số quan trọng nhất để tra cứu chính xác."
+                    }
                 },
-                "required": ["query"]
+                "required": ["query", "search_word"]
             }
         }
     },
@@ -80,7 +86,7 @@ _FALLBACK_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "vsl_restruct",
-            "description": "CHỈ dùng khi người dùng yêu cầu chuyển đổi một câu tiếng Việt sang cấu trúc ngữ pháp VSL (S-P-O). Ví dụ: 'chuyển câu tôi đi ăn sang VSL', 'sắp xếp câu này theo VSL'. KHÔNG dùng cho câu hỏi thông thường, giới thiệu, hay hỏi về ký hiệu từ.",
+            "description": "Dùng khi người dùng yêu cầu chuyển đổi một câu tiếng Việt sang cấu trúc ngữ pháp VSL (S-P-O). Ví dụ: 'chuyển câu tôi đi ăn sang VSL', 'sắp xếp câu này theo VSL'.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -94,7 +100,7 @@ _FALLBACK_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_web_search",
-            "description": "CHỈ dùng khi người dùng hỏi về tin tức, thông tin mới, số liệu cập nhật, sự kiện hiện tại. KHÔNG dùng cho câu hỏi về VSL hay chào hỏi.",
+            "description": "Dùng khi người dùng hỏi về tin tức, thông tin mới, số liệu cập nhật, sự kiện hiện tại.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -120,14 +126,6 @@ def map_tools_display(tools: list[str]) -> list[str]:
 
 
 @dataclass
-class IntentResult:
-    tools: list[str] = field(default_factory=list)
-    needs_extraction: bool = False
-    extracted_sentence: str | None = None
-    confidence: float = 1.0  # 0.0 → 1.0
-
-
-@dataclass
 class ToolResult:
     content: str = ""
     links: list = field(default_factory=list)
@@ -140,183 +138,39 @@ class OrchestratedResult:
     all_links: list = field(default_factory=list)
 
 
-class QueryAnalyzer:
-    """Phân tích query bằng regex/keywords — zero LLM cost."""
-
-    # Patterns cho từng tool
-    _VSL_SIGN_WORDS = [
-        "ký hiệu", "miêu tả", "biểu diễn", "cách đánh", "cách ký",
-        "dấu hiệu", "ngôn ngữ ký hiệu", "vsl", "động tác", "thể hiện.*tay",
-        "ký tự", "đánh vần", "làm thế nào.*ký",
-    ]
-    _VSL_RESTRUCT_WORDS = [
-        "chuyển.*câu", "sắp xếp.*câu", "cấu trúc.*vsl", "ngữ pháp.*vsl",
-        "sang.*vsl", "viết lại.*vsl", "đổi.*cấu trúc", "chuyển đổi.*vsl",
-        "sap xep", "cau truc",
-    ]
-    _WEB_SEARCH_WORDS = [
-        "tin tức", "mới nhất", "hiện nay", "năm 202[5-9]",
-        "thị trường", "báo giá", "xu hướng", "google", "tìm kiếm.*web",
-        "thông tin mới", "cập nhật",
-    ]
-    _GREETING_WORDS = [
-        "xin chào", "chào", "hello", "hi", "bạn là ai",
-        "giới thiệu", "có thể làm gì", "bạn tên gì", "làm quen",
-    ]
-
-    @classmethod
-    def analyze(cls, query: str) -> IntentResult:
-        q = query.lower().strip()
-        tools = []
-        needs_extraction = False
-
-        # 1. Kiểm tra greeting nhanh — không cần tool
-        if cls._is_greeting(q):
-            return IntentResult(tools=[], confidence=1.0)
-
-        # 2. Kiểm tra vsl_restruct (ưu tiên cao nhất vì cần extract)
-        if cls._match_any(q, cls._VSL_RESTRUCT_WORDS):
-            tools.append("vsl_restruct")
-            needs_extraction = True
-
-        # 3. Kiểm tra tra cứu ký hiệu
-        if cls._match_any(q, cls._VSL_SIGN_WORDS) or cls._likely_sign_query(q):
-            tools.append("get_qa_retriever")
-
-        # 4. Kiểm tra web search
-        if cls._match_any(q, cls._WEB_SEARCH_WORDS):
-            tools.append("get_web_search")
-
-        # 5. Default: nếu không match tool nào và không phải greeting
-        if not tools and len(q) > 2:
-            # Câu hỏi chung về VSL → tra từ điển
-            if cls._likely_vsl_related(q):
-                tools.append("get_qa_retriever")
-            else:
-                # Query dài, không rõ intent → fallback về LLM routing
-                return IntentResult(tools=[], confidence=0.3, needs_extraction=False)
-
-        # Dedup + giữ thứ tự ưu tiên
-        seen = set()
-        unique_tools = []
-        for t in tools:
-            if t not in seen:
-                seen.add(t)
-                unique_tools.append(t)
-
-        return IntentResult(
-            tools=unique_tools,
-            needs_extraction=needs_extraction,
-            confidence=0.9 if unique_tools else 0.3,
-        )
-
-    @classmethod
-    def _is_greeting(cls, q: str) -> bool:
-        return cls._match_any(q, cls._GREETING_WORDS)
-
-    @classmethod
-    def _match_any(cls, q: str, patterns: list[str]) -> bool:
-        for p in patterns:
-            if re.search(p, q):
-                return True
-        return False
-
-    @classmethod
-    def _likely_sign_query(cls, q: str) -> bool:
-        short_words = [w for w in q.split() if len(w) <= 5]
-        return len(short_words) >= 1 and any(
-            w in q for w in ["là gì", "trong vsl", "từ", "chữ"]
-        )
-
-    @classmethod
-    def _likely_vsl_related(cls, q: str) -> bool:
-        vsl_hints = ["vsl", "ký hiệu", "ngôn ngữ", "người câm", "điếc",
-                     "thủ ngữ", "câm", "ra dấu", "tay"]
-        for hint in vsl_hints:
-            if hint in q:
-                return True
-        # Nếu query có dạng câu hỏi về 1 từ đơn
-        if len(q.split()) <= 5 and ("?" in q or q.endswith("?")):
-            return True
-        return False
-
-    @staticmethod
-    def extract_sentence(query: str) -> str | None:
-        patterns = [
-            # "chuyển câu 'tôi đi ăn' sang VSL"
-            r"['\"](.+?)['\"]",
-            # "chuyển câu tôi đi ăn sang VSL"
-            r"(?:chuyển|đổi)\s+(?:câu\s+)?(.+?)(?:\s+sang|\s+thành|\s+theo|\s*$)",
-            # "câu: tôi đi ăn"
-            r"(?:câu|câu sau|đoạn sau)[:\s]+(.+?)(?:\s*$|\s*sang)",
-        ]
-        for p in patterns:
-            m = re.search(p, query, re.IGNORECASE)
-            if m:
-                extracted = m.group(1).strip().rstrip(".,;")
-                if len(extracted) >= 3:  # câu phải có ít nhất 3 ký tự
-                    return extracted
-        return None
-
-
-
-class MiniExtractor:
-    _PROMPT = (
-        "Trích xuất CHÍNH XÁC câu tiếng Việt cần chuyển đổi cấu trúc VSL "
-        "(sắp xếp lại thứ tự từ theo ngữ pháp VSL) từ câu hỏi dưới đây.\n"
-        "CHỈ trả về câu đó, không thêm bất kỳ ký tự hay giải thích nào.\n\n"
-        "Câu hỏi: {query}\n\n"
-        "Câu cần chuyển đổi:"
-    )
-
-    @classmethod
-    async def extract(cls, query: str) -> str | None:
-        try:
-            resp = client.chat.completions.create(
-                model=config.OPENAI_MODEL,
-                messages=[{"role": "user", "content": cls._PROMPT.format(query=query)}],
-                temperature=0,
-                max_tokens=50,
-            )
-            extracted = (resp.choices[0].message.content or "").strip().strip("\"'")
-            if extracted and len(extracted) >= 2:
-                logger.info(f"MiniExtractor: '{query[:50]}...' → '{extracted[:50]}...'")
-                return extracted
-            return None
-        except Exception as e:
-            logger.warning(f"MiniExtractor failed: {e}")
-            return None
-
+def _wrap_tool_result(tool_name: str, content: str) -> str:
+    """Wrap content với label để LLM nhận biết nhánh trả lời."""
+    label = {
+        "get_qa_retriever": "TRA CỨU TỪ ĐIỂN VSL",
+        "vsl_restruct": "CHUYỂN ĐỔI CẤU TRÚC VSL",
+        "get_web_search": "TÌM KIẾM WEB",
+    }.get(tool_name, tool_name.upper())
+    return f"=== {label} ===\n{content}"
 
 
 class ToolOrchestrator:
     @staticmethod
     async def execute(
-        tools: list[str],
-        query: str,
-        extracted_sentence: str | None = None,
+        tools_args: dict[str, dict],
     ) -> OrchestratedResult:
-        if not tools:
+        """Execute tools với args được LLM cung cấp.
+        
+        Args:
+            tools_args: Dict {tool_name: args_dict} do LLM quyết định
+        """
+        if not tools_args:
             return OrchestratedResult()
 
         # Map tool name → coroutine
         coros: dict = {}
-        for tool in tools:
-            if tool == "get_qa_retriever":
-                coros[tool] = _execute_tool_rich(tool, {"query": query})
-            elif tool == "vsl_restruct":
-                text = extracted_sentence or query
-                # Nếu câu extract quá ngắn (< 3 từ) hoặc giống hệt query → dùng query
-                if text and len(text.split()) < 3 and text != query:
-                    text = query
-                coros[tool] = _execute_tool_rich(tool, {"text": text})
-            elif tool == "get_web_search":
-                coros[tool] = _execute_tool_rich(tool, {"query": query})
+        for tool_name, args in tools_args.items():
+            func = TOOL_FUNCS.get(tool_name)
+            if func:
+                coros[tool_name] = _execute_tool_rich(tool_name, args)
 
         if not coros:
             return OrchestratedResult()
 
-        # Song song: tất cả tool chạy đồng thời
         results = await asyncio.gather(*coros.values(), return_exceptions=True)
 
         context_parts = []
@@ -326,19 +180,13 @@ class ToolOrchestrator:
         for (tool_name, _coro), result in zip(coros.items(), results):
             if isinstance(result, Exception):
                 logger.error(f"Tool {tool_name} execution error: {result}")
-                context_parts.append(f"[{tool_name}]: Lỗi: {result}")
+                context_parts.append(f"=== LỖI ===\n[{tool_name}]: {result}")
                 continue
 
             tools_used.append(tool_name)
             content = (result.get("content") or "").strip()
             if content:
-                # Prefix rõ nguồn để LLM biết thông tin từ tool nào
-                label = {
-                    "get_qa_retriever": "TRA CỨU TỪ ĐIỂN VSL",
-                    "vsl_restruct": "CHUYỂN ĐỔI CẤU TRÚC VSL",
-                    "get_web_search": "TÌM KIẾM WEB",
-                }.get(tool_name, tool_name.upper())
-                context_parts.append(f"=== {label} ===\n{content}")
+                context_parts.append(_wrap_tool_result(tool_name, content))
 
             links = result.get("links") or []
             all_links.extend(links)
@@ -395,9 +243,11 @@ SYSTEM_PROMPT = (
     "QUY TẮC CHỌN NHÁNH TRẢ LỜI (chỉ dùng nhánh tương ứng với dữ liệu được cung cấp):\n\n"
 
     "1) Nếu có === TRA CỨU TỪ ĐIỂN VSL ===:\n"
-    "   - Dùng nguyên văn mô tả ký hiệu tìm được, kèm Loại và Khu vực nếu có.\n"
-    "   - Nếu không có kết quả phù hợp, trả lời: 'Chưa có dữ liệu về ký hiệu này'.\n"
-    "   - Giải thích thêm cho người học: paraphrase lại mô tả bằng lời tự nhiên, nói rõ cách thực hiện ký hiệu.\n\n"
+    "   - Nếu tìm thấy kết quả phù hợp:\n"
+    "       + Dùng nguyên văn mô tả ký hiệu tìm được, kèm Loại và Khu vực nếu có.\n"
+    "       + Giải thích thêm cho người học: paraphrase lại mô tả bằng lời tự nhiên, nói rõ cách thực hiện ký hiệu.\n"
+    "   - Nếu KHÔNG có kết quả phù hợp: CHỈ trả lời 'Chưa có dữ liệu về ký hiệu này.' "
+    "KHÔNG tự ý mô tả ký hiệu dựa trên kiến thức riêng của bạn.\n\n"
 
     "2) Nếu có === CHUYỂN ĐỔI CẤU TRÚC VSL ===:\n"
     "   - Đây là nhánh CHỈ dùng khi người dùng yêu cầu chuyển một câu tiếng Việt "
@@ -462,51 +312,67 @@ def _safe_answer(text: str) -> str:
 
 
 async def run_query(query: str, conversation_history: list = None) -> dict:
-    """Single-pass: heuristic → parallel tools → 1 LLM call. Không tool schemas."""
+    """LLM quyết định tool → execute → trả lời."""
     if is_shutting_down():
         return {
             "answer": "Hệ thống đang tắt, vui lòng thử lại sau.",
             "tools_used": [],
             "links": [],
         }
+
+    tool_results = OrchestratedResult()
     try:
-        # ── Phase 1: Analyze intent ──
-        intent = QueryAnalyzer.analyze(query)
-
-        # ── Phase 2: Extract sentence cho vsl_restruct (nếu cần) ──
-        extracted = None
-        if "vsl_restruct" in intent.tools:
-            extracted = QueryAnalyzer.extract_sentence(query)
-            if not extracted:
-                extracted = await MiniExtractor.extract(query)
-
-        # ── Phase 3: Execute tools song song ──
-        tool_results = await ToolOrchestrator.execute(
-            tools=intent.tools,
-            query=query,
-            extracted_sentence=extracted,
-        )
-
-        # ── Phase 4: Build messages + single LLM call ──
-        messages = _build_messages(
-            query=query,
-            conversation_history=conversation_history,
-            tool_context=tool_results.fused_context or None,
-        )
+        # ── Phase 1: LLM quyết định tool + tham số ──
+        messages = _build_messages(query, conversation_history)
 
         response = client.chat.completions.create(
             model=config.OPENAI_MODEL,
             messages=messages,
+            tools=VSL_TOOL_SCHEMAS,
+            tool_choice="auto",
             temperature=0.7,
             max_tokens=config.MAX_OUTPUT_TOKENS,
         )
 
-        final_answer = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        msg = choice.message
+
+        # ── Phase 2: Execute tool nếu LLM yêu cầu ──
+        if msg.tool_calls:
+            tools_args = {}
+            for tc in msg.tool_calls:
+                try:
+                    func_args = json.loads(tc.function.arguments)
+                except json.JSONDecodeError:
+                    func_args = {}
+                tools_args[tc.function.name] = func_args
+
+            tool_results = await ToolOrchestrator.execute(tools_args)
+
+            # Build messages với tool context
+            messages = _build_messages(
+                query=query,
+                conversation_history=conversation_history,
+                tool_context=tool_results.fused_context or None,
+            )
+
+        # ── Phase 3: Generate final answer ──
+        if msg.tool_calls:
+            # Cần gọi LLM lại để tổng hợp câu trả lời với tool context
+            response = client.chat.completions.create(
+                model=config.OPENAI_MODEL,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=config.MAX_OUTPUT_TOKENS,
+            )
+            final_answer = response.choices[0].message.content or ""
+        else:
+            # LLM trả lời trực tiếp (greeting, chat thông thường)
+            final_answer = msg.content or ""
 
     except Exception as e:
         logger.error(f"run_query error: {e}")
         final_answer = "Xin lỗi, hệ thống AI tạm thời không khả dụng. Vui lòng thử lại sau."
-        tool_results = OrchestratedResult()
 
     return {
         "answer": _safe_answer(final_answer),
@@ -518,7 +384,7 @@ async def run_query(query: str, conversation_history: list = None) -> dict:
 
 async def run_query_streaming(query: str, conversation_history: list = None):
     """
-    Hybrid routing: heuristic pre-filter → LLM quyết định tool → stream.
+    LLM quyết định tool (với search_word) → execute → stream câu trả lời.
     2-pass: (1) non-streaming xác định tool → (2) streaming câu trả lời.
     """
     if is_shutting_down():
@@ -527,60 +393,57 @@ async def run_query_streaming(query: str, conversation_history: list = None):
         return
 
     tool_results = OrchestratedResult()
+    has_content = False
     try:
         yield {"type": "info", "content": "Đang phân tích câu hỏi..."}
 
-        # ── Bước 0: Heuristic pre-filter ──
-        # Nếu heuristic chắc chắn là greeting (confidence=1.0) → skip tool, stream luôn
-        # Còn lại → để LLM quyết định tool
-        heuristic_intent = QueryAnalyzer.analyze(query)
-        needs_tool_call = not (heuristic_intent.confidence == 1.0 and not heuristic_intent.tools)
-
         messages = _build_messages(query, conversation_history)
 
-        if needs_tool_call:
-            # ── Bước 1: LLM quyết định tool (chỉ khi heuristic nghi ngờ cần tool) ──
-            response = client.chat.completions.create(
-                model=config.OPENAI_MODEL,
-                messages=messages,
-                tools=_FALLBACK_TOOL_SCHEMAS,
-                tool_choice="auto",
-                temperature=0.7,
-                max_tokens=config.MAX_OUTPUT_TOKENS,
-            )
+        # ── Bước 1: LLM quyết định tool + tham số ──
+        response = client.chat.completions.create(
+            model=config.OPENAI_MODEL,
+            messages=messages,
+            tools=VSL_TOOL_SCHEMAS,
+            tool_choice="auto",
+            temperature=0.7,
+            max_tokens=config.MAX_OUTPUT_TOKENS,
+        )
 
-            choice = response.choices[0]
-            msg = choice.message
+        choice = response.choices[0]
+        msg = choice.message
 
-            if msg.tool_calls:
-                yield {"type": "info", "content": "Đang tra cứu thông tin..."}
+        if msg.tool_calls:
+            yield {"type": "info", "content": "Đang tra cứu thông tin..."}
 
-                for tc in msg.tool_calls:
-                    func_name = tc.function.name
-                    try:
-                        func_args = json.loads(tc.function.arguments)
-                    except json.JSONDecodeError:
-                        func_args = {}
+            # Execute tools với args từ LLM (search_word được LLM cung cấp trực tiếp)
+            for tc in msg.tool_calls:
+                func_name = tc.function.name
+                try:
+                    func_args = json.loads(tc.function.arguments)
+                except json.JSONDecodeError:
+                    func_args = {}
 
-                    tool_result = await _execute_tool_rich(func_name, func_args)
-                    tool_results.tools_used.append(func_name)
-                    tool_results.all_links.extend(tool_result.get("links", []))
+                tool_result = await _execute_tool_rich(func_name, func_args)
+                tool_results.tools_used.append(func_name)
+                tool_results.all_links.extend(tool_result.get("links", []))
 
-                    messages.append({
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": [tc],
-                    })
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": tool_result["content"],
-                    })
+                # Wrap với label để khớp SYSTEM_PROMPT
+                labeled_content = tool_result["content"]
+                if labeled_content.strip():
+                    labeled_content = _wrap_tool_result(func_name, labeled_content)
 
-                yield {"type": "info", "content": "Đang tổng hợp câu trả lời..."}
-        else:
-            # Không cần tool → stream trực tiếp, không có initial content
-            initial_content = None
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [tc],
+                })
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": labeled_content,
+                })
+
+            yield {"type": "info", "content": "Đang tổng hợp câu trả lời..."}
 
         # ── Bước 2: Stream câu trả lời ──
         stream = client.chat.completions.create(
@@ -591,8 +454,8 @@ async def run_query_streaming(query: str, conversation_history: list = None):
             stream=True,
         )
 
-        has_content = False
-        if needs_tool_call and msg.content:
+        # Nếu LLM có content kèm theo tool call (trường hợp hiếm)
+        if msg.content:
             has_content = True
             yield {"type": "token", "content": msg.content}
 
