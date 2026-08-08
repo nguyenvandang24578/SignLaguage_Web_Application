@@ -389,30 +389,36 @@ function showResults({ correctCount, total, wrongList, mode }) {
     }
 
     document.getElementById('results-box').innerHTML = `
-        <div class="results-score-ring">
-            <svg viewBox="0 0 144 144">
-                <circle class="track" cx="72" cy="72" r="64"/>
-                <circle class="fill-ring" cx="72" cy="72" r="64"
-                    stroke="${color}"
-                    stroke-dasharray="${circumference}"
-                    stroke-dashoffset="${circumference}"
-                    id="score-ring-fill"/>
-            </svg>
-            <div class="results-score-text">
-                <span class="number" style="color: ${color}">${correctCount}/${total}</span>
-                <span class="label">${percent}%</span>
+        <div class="split-results-box">
+            <div class="results-left">
+                <div class="results-score-ring">
+                    <svg viewBox="0 0 144 144">
+                        <circle class="track" cx="72" cy="72" r="64"/>
+                        <circle class="fill-ring" cx="72" cy="72" r="64"
+                            stroke="${color}"
+                            stroke-dasharray="${circumference}"
+                            stroke-dashoffset="${circumference}"
+                            id="score-ring-fill"/>
+                    </svg>
+                    <div class="results-score-text">
+                        <span class="number" style="color: ${color}">${correctCount}/${total}</span>
+                        <span class="label">${percent}%</span>
+                    </div>
+                </div>
+                <div class="results-message" style="color: ${color}">${msg}</div>
+                <div class="results-subtitle">${sub}</div>
             </div>
-        </div>
-        <div class="results-message" style="color: ${color}">${msg}</div>
-        <div class="results-subtitle">${sub}</div>
-        ${wrongHTML}
-        <div class="results-actions">
-            <button class="results-btn secondary" onclick="goHome()">
-                <i class="fas fa-home"></i> Trang chủ
-            </button>
-            <button class="results-btn primary" onclick="${mode === 'challenge' ? 'retryChallenge()' : 'retryQuiz()'}">
-                <i class="fas fa-redo"></i> Chơi lại
-            </button>
+            <div class="results-right">
+                ${wrongHTML}
+                <div class="results-actions">
+                    <button class="results-btn secondary" onclick="goHome()">
+                        <i class="fas fa-home"></i> Trang chủ
+                    </button>
+                    <button class="results-btn primary" onclick="${mode === 'challenge' ? 'retryChallenge()' : 'retryQuiz()'}">
+                        <i class="fas fa-redo"></i> Chơi lại
+                    </button>
+                </div>
+            </div>
         </div>`;
 
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -853,8 +859,8 @@ window.retryPractice = function () {
 
 window.goBackFromPractice = function () {
     stopPracticeSession();
-    historyStack = ['screen-main-menu', 'screen-practice-menu'];
-    switchScreen('screen-practice-menu', true);
+    historyStack = ['screen-main-menu'];
+    switchScreen('screen-main-menu', true);
 };
 
 // ============================================================================
