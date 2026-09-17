@@ -1,9 +1,11 @@
+// Khi deploy lên server GPU qua Cloudflare, đổi URL ở đây:
+const CHATBOT_SERVER_URL = 'https://dominant-steel-pace-hierarchy.trycloudflare.com';
 const DEV_PORTS = ["5500", "5501", "3000", "5173", "8080"];
-const API =
-  window.location.protocol === "file:" ||
-  DEV_PORTS.includes(window.location.port)
-    ? "http://localhost:8000/api"
-    : "/api";
+const API = CHATBOT_SERVER_URL 
+    ? `${CHATBOT_SERVER_URL}/api`
+    : (window.location.protocol === "file:" || DEV_PORTS.includes(window.location.port)
+        ? "http://localhost:8000/api"
+        : "/api");
 
 let currentSessionId = null;
 let isLoading = false;
