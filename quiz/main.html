@@ -252,9 +252,11 @@
 
                 <!-- Dual-panel layout: camera (always) + reference (challenge only) -->
                 <div class="practice-stage">
-                    <!-- Camera: MJPEG stream — server vẽ skeleton + HUD, browser chỉ hiển thị -->
+                    <!-- Camera: MJPEG stream (local) hoặc WebRTC capture (remote) -->
                     <div class="camera-wrapper" id="camera-wrapper">
-                        <img id="webcam-video" alt="Camera">
+                        <img id="webcam-video-img" alt="Camera (Local)">
+                        <video id="webcam-video-stream" autoplay playsinline muted style="display:none;"></video>
+                        <canvas id="capture-canvas" style="display:none;"></canvas>
                         <div class="collect-bar-overlay">
                             <div class="collect-bar-fill" id="collect-bar"></div>
                         </div>

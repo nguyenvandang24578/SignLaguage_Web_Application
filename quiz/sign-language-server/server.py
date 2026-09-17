@@ -1,16 +1,19 @@
 """
-Sign Language Quiz — FastAPI Server (MJPEG Streaming, decoupled pipeline)
+Sign Language Quiz — FastAPI Server (Dual Mode: Local + Remote)
 
-Kiến trúc:
-  Thread 1 (WebcamVideoStream): cv2.VideoCapture → raw_frame (đã có sẵn)
-  Thread 2 (InferenceWorker):   raw_frame → Holistic + state machine → overlay_frame (MỚI)
-  Thread 3 (per HTTP client):   overlay_frame → JPEG encode → yield (đơn giản hóa)
+Modes:
+  LOCAL  (CAMERA_MODE=local):
+    - Server mở webcam, chạy inference, stream MJPEG (giống bản gốc)
+    - Dùng cho development/demo trên máy local
 
-Lý do tách:
-  - Holistic ~35ms/frame trên CPU ⇒ nếu tuần tự trong HTTP generator,
-    cap toàn pipeline ở ~20 FPS.
-  - Tách inference thành thread riêng ⇒ stream FPS = camera FPS bất kể
-    Holistic chậm bao nhiêu (chỉ là overlay update chậm hơn frame rate một chút).
+  REMOTE (CAMERA_MODE=remote):
+    - Client gửi JPEG frames qua WebSocket binary
+    - Server nhận frame → MediaPipe + STA-GCN → trả kết quả JSON
+    - Dùng cho deployment trên VPS/cloud có GPU
+
+Kiến trúc Remote:
+  Browser: getUserMedia → canvas → JPEG → WS binary → Server
+  Server:  decode JPEG → Holistic + STA-GCN → JSON result → WS → Browser
 """
 
 import os
@@ -60,40 +63,37 @@ app.add_middleware(
 # ==========================================
 # CẤU HÌNH
 # ==========================================
+# --- Mode ---
+CAMERA_MODE = os.environ.get("CAMERA_MODE", "local").lower()  # "local" hoặc "remote"
+print(f"🔧 CAMERA_MODE = {CAMERA_MODE}")
+
 NUM_JOINTS = 27
 SEQUENCE_LENGTH = 60
 NUM_CLASSES = 50
 WEIGHT_PATH = os.path.join(SERVER_DIR, 'stagcn_tiny_supcon_50cls_best.pt')
 PREDICTION_THRESHOLD = 0.40
 
-# Camera capture — match demo gốc (1280×720)
-# 1080p capture quá nặng: read() chậm hơn, resize + flip + encode đều tăng.
-# 720p đủ nét cho skeleton display + MediaPipe không cần cao hơn.
-CAMERA_SRC = 1
+# Camera capture — chỉ dùng cho LOCAL mode
+CAMERA_SRC = int(os.environ.get("CAMERA_SRC", "1"))
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
 CAMERA_FPS = 30
 
-# Holistic inference — riêng resolution, độc lập với capture
+# Holistic inference
 HOLISTIC_COMPLEXITY = 0
-HOLISTIC_INPUT_WIDTH = 640      # AI nhanh; landmarks là normalized [0,1] nên
-                                # không liên quan resolution camera
+HOLISTIC_INPUT_WIDTH = 640
 
-# Coordinate space khi extract keypoints cho STA-GCN.
-# QUAN TRỌNG: phải match resolution mà training data của bạn được extract.
-# Đa số code MediaPipe-based SLR train ở 1280×720 → giữ giá trị này
-# bất kể camera capture resolution nào.
+# Coordinate space cho STA-GCN (phải match training data)
 MODEL_INPUT_WIDTH = 1280
 MODEL_INPUT_HEIGHT = 720
 
-# Display stream resolution — camera đã 720p nên không cần downscale
+# Display stream — chỉ dùng cho LOCAL mode
 STREAM_WIDTH = None
+JPEG_QUALITY = 70
+JPEG_CHROMA_QUALITY = 70
+MJPEG_TARGET_FPS = 30
 
-JPEG_QUALITY = 70               # Giảm từ 85 → 70: tiết kiệm ~40% bandwidth, mắt khó thấy khác biệt
-JPEG_CHROMA_QUALITY = 70        # Match luma quality
-MJPEG_TARGET_FPS = 30           # Cap stream FPS
-
-MIRROR_FRAME = True             # ⚠️ Set False nếu bạn KHÔNG muốn flip (camera của bạn có thể đã không-gương sẵn)
+MIRROR_FRAME = True
 
 mp_holistic = mp.solutions.holistic
 mp_drawing = mp.solutions.drawing_utils
@@ -201,78 +201,6 @@ class OneEuroFilter:
         self.t_prev = None
 
 
-# Global filters cho 3 nhóm landmark (pose, left hand, right hand).
-# Mỗi filter giữ state riêng — không lẫn nhau khi mất tracking ngắn hạn.
-pose_filter = OneEuroFilter(min_cutoff=1.0,  beta=0.007)
-lhand_filter = OneEuroFilter(min_cutoff=1.5, beta=0.01)
-rhand_filter = OneEuroFilter(min_cutoff=1.5, beta=0.01)
-
-
-
-class WebcamVideoStream:
-    def __init__(self, src=CAMERA_SRC, width=CAMERA_WIDTH, height=CAMERA_HEIGHT, fps=CAMERA_FPS):
-        self.stream = cv2.VideoCapture(src)
-        self.stream.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self.stream.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        self.stream.set(cv2.CAP_PROP_FPS, fps)  # explicit, một số driver default 15 FPS
-        self.grabbed, self.frame = self.stream.read()
-        self.stopped = False
-        self.lock = Lock()
-
-    def start(self):
-        Thread(target=self._update, daemon=True).start()
-        return self
-
-    def _update(self):
-        while not self.stopped:
-            grabbed, frame = self.stream.read()
-            if grabbed and frame is not None:
-                with self.lock:
-                    self.grabbed = grabbed
-                    self.frame = frame
-
-    def read(self):
-        with self.lock:
-            if self.frame is None:
-                return False, None
-            return self.grabbed, self.frame.copy()
-
-    def stop(self):
-        self.stopped = True
-        time.sleep(0.1)
-        self.stream.release()
-
-
-# ==========================================
-# SHARED STATE
-# ==========================================
-class PracticeState:
-    def __init__(self):
-        self.active = False
-        self.state = "IDLE"
-        self.target_no_accent = ""
-        self.target_display = ""
-        self.phase_start = 0.0
-        self.frames_queue = deque(maxlen=SEQUENCE_LENGTH)
-        self.last_top3 = []
-        self.last_success = False
-        self.event_queue = []
-        self.lock = Lock()
-
-    def push_event(self, evt):
-        with self.lock:
-            self.event_queue.append(evt)
-
-    def pop_events(self):
-        with self.lock:
-            evts = self.event_queue
-            self.event_queue = []
-            return evts
-
-
-practice_state = PracticeState()
-
-
 # ==========================================
 # HELPERS
 # ==========================================
@@ -332,17 +260,65 @@ def preprocess_for_model(frames_list):
     return torch.from_numpy(data).unsqueeze(0).float()
 
 
-def step_state_machine(kpts, frame_for_overlay):
-    ps = practice_state
+# ==========================================
+# PRACTICE STATE — Per-session cho remote mode
+# ==========================================
+class PracticeState:
+    def __init__(self):
+        self.active = False
+        self.state = "IDLE"
+        self.target_no_accent = ""
+        self.target_display = ""
+        self.phase_start = 0.0
+        self.frames_queue = deque(maxlen=SEQUENCE_LENGTH)
+        self.last_top3 = []
+        self.last_success = False
+        self.event_queue = []
+        self.lock = Lock()
+
+        # Per-session filters (remote mode — mỗi user có filter riêng)
+        self.pose_filter = OneEuroFilter(min_cutoff=1.0, beta=0.007)
+        self.lhand_filter = OneEuroFilter(min_cutoff=1.5, beta=0.01)
+        self.rhand_filter = OneEuroFilter(min_cutoff=1.5, beta=0.01)
+
+        # Per-session holistic (remote mode)
+        self.holistic = None
+
+    def init_holistic(self):
+        """Lazy-init Holistic instance cho session này."""
+        if self.holistic is None:
+            self.holistic = mp_holistic.Holistic(
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+                model_complexity=HOLISTIC_COMPLEXITY
+            )
+        return self.holistic
+
+    def close_holistic(self):
+        """Giải phóng Holistic khi session kết thúc."""
+        if self.holistic is not None:
+            self.holistic.close()
+            self.holistic = None
+
+    def push_event(self, evt):
+        with self.lock:
+            self.event_queue.append(evt)
+
+    def pop_events(self):
+        with self.lock:
+            evts = self.event_queue
+            self.event_queue = []
+            return evts
+
+
+def step_state_machine(ps, kpts):
+    """Chạy state machine cho một PracticeState instance."""
     if not ps.active:
         return
 
-    h, w = frame_for_overlay.shape[:2]
     state = ps.state
 
     if state == "WAIT":
-        # Push countdown mỗi tick để client render overlay "3, 2, 1, GO!" mượt.
-        # Client xem field `countdown` (giây còn lại) hoặc `message`.
         elapsed = time.time() - ps.phase_start
         remaining = max(0.0, 2.0 - elapsed)
         ps.push_event({
@@ -360,8 +336,6 @@ def step_state_machine(kpts, frame_for_overlay):
                           "message": "Hãy thực hiện ký hiệu!"})
 
     elif state == "COLLECT":
-        # Push frame keypoints. Không vẽ progress bar lên frame.
-        # Client render progress bar dựa trên event "status" với progress field.
         ps.frames_queue.append(kpts)
         progress = len(ps.frames_queue) / SEQUENCE_LENGTH
 
@@ -372,11 +346,9 @@ def step_state_machine(kpts, frame_for_overlay):
 
         if len(ps.frames_queue) == SEQUENCE_LENGTH:
             ps.state = "PREDICT"
-            _run_predict()
+            _run_predict(ps)
 
     elif state == "SHOW":
-        # Không vẽ "CHINH XAC"/"CHUA DUNG" trên frame.
-        # Client render overlay đẹp hơn (HTML/CSS animation + audio feedback).
         elapsed = time.time() - ps.phase_start
         if elapsed >= 3.0:
             ps.state = "WAIT"
@@ -385,8 +357,7 @@ def step_state_machine(kpts, frame_for_overlay):
             ps.push_event({"type": "status", "state": "WAIT", "message": "Lượt mới..."})
 
 
-def _run_predict():
-    ps = practice_state
+def _run_predict(ps):
     try:
         inp = preprocess_for_model(ps.frames_queue).to(device)
         with torch.no_grad():
@@ -424,11 +395,48 @@ def _run_predict():
         ps.phase_start = time.time()
 
 
+def process_frame_remote(ps, jpeg_bytes):
+    """
+    Remote mode: decode JPEG → Holistic → extract keypoints → state machine.
+    Trả về True nếu xử lý thành công.
+    """
+    # Decode JPEG
+    nparr = np.frombuffer(jpeg_bytes, np.uint8)
+    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if frame is None:
+        return False
+
+    h, w = frame.shape[:2]
+
+    # Resize cho Holistic (nhẹ hơn)
+    scale = HOLISTIC_INPUT_WIDTH / w
+    small = cv2.resize(frame, (HOLISTIC_INPUT_WIDTH, int(h * scale)))
+    rgb_small = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+    rgb_small.flags.writeable = False
+
+    # Chạy Holistic
+    holistic_inst = ps.init_holistic()
+    results = holistic_inst.process(rgb_small)
+
+    # One-Euro smoothing
+    t_now = time.time()
+    _smooth_landmark_list(results.pose_landmarks, ps.pose_filter, t_now)
+    _smooth_landmark_list(results.left_hand_landmarks, ps.lhand_filter, t_now)
+    _smooth_landmark_list(results.right_hand_landmarks, ps.rhand_filter, t_now)
+
+    # Extract keypoints
+    kpts = extract_frame_keypoints(results, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT)
+
+    # State machine
+    step_state_machine(ps, kpts)
+
+    return True
+
+
 # ==========================================
 # LOAD MODEL
 # ==========================================
 print("⚙️  Loading STA-GCN model...")
-# Auto-detect device: CUDA > MPS (Apple Silicon) > CPU
 if torch.cuda.is_available():
     device = torch.device('cuda')
     print(f"   → CUDA available: {torch.cuda.get_device_name(0)}")
@@ -446,7 +454,6 @@ model = Model(
 model.load_state_dict(torch.load(WEIGHT_PATH, map_location=device))
 model.to(device).eval()
 
-# Warmup — first forward pass trên GPU thường chậm vì lazy CUDA init
 print("   → Warming up model...")
 with torch.no_grad():
     dummy = torch.randn(1, 3, SEQUENCE_LENGTH, NUM_JOINTS, 1).to(device)
@@ -458,253 +465,260 @@ print("✅ Model loaded + warmed up.")
 
 
 # ==========================================
-# CAMERA + HOLISTIC
+# LOCAL MODE: Camera + InferenceWorker + MJPEG
 # ==========================================
-print("📷 Starting camera + Holistic...")
-camera = WebcamVideoStream().start()
-time.sleep(1.0)
-holistic = mp_holistic.Holistic(
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5,
-    model_complexity=HOLISTIC_COMPLEXITY
-)
-print("✅ Camera + Holistic ready.")
+# Global filters cho LOCAL mode
+pose_filter = OneEuroFilter(min_cutoff=1.0, beta=0.007)
+lhand_filter = OneEuroFilter(min_cutoff=1.5, beta=0.01)
+rhand_filter = OneEuroFilter(min_cutoff=1.5, beta=0.01)
+
+# Global practice state cho LOCAL mode (chỉ 1 user)
+practice_state = PracticeState()
+
+camera = None
+holistic = None
+inference_worker = None
+
+if CAMERA_MODE == "local":
+    class WebcamVideoStream:
+        def __init__(self, src=CAMERA_SRC, width=CAMERA_WIDTH, height=CAMERA_HEIGHT, fps=CAMERA_FPS):
+            self.stream = cv2.VideoCapture(src)
+            self.stream.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            self.stream.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            self.stream.set(cv2.CAP_PROP_FPS, fps)
+            self.grabbed, self.frame = self.stream.read()
+            self.stopped = False
+            self.lock = Lock()
+
+        def start(self):
+            Thread(target=self._update, daemon=True).start()
+            return self
+
+        def _update(self):
+            while not self.stopped:
+                grabbed, frame = self.stream.read()
+                if grabbed and frame is not None:
+                    with self.lock:
+                        self.grabbed = grabbed
+                        self.frame = frame
+
+        def read(self):
+            with self.lock:
+                if self.frame is None:
+                    return False, None
+                return self.grabbed, self.frame.copy()
+
+        def stop(self):
+            self.stopped = True
+            time.sleep(0.1)
+            self.stream.release()
 
 
-# ==========================================
-# INFERENCE WORKER (MỚI — tách khỏi HTTP stream)
-# ==========================================
-class InferenceWorker:
-    """
-    Thread architecture với double-buffering (temporal decoupling):
+    class InferenceWorker:
+        """LOCAL mode only — Thread architecture với double-buffering."""
+        def __init__(self):
+            self.overlay_frame = None
+            self.overlay_lock = Lock()
+            self._frame_id = 0
+            self._jpeg_buf = None
 
-      Sub-thread B1 (Inference loop):
-        - Đọc frame mới nhất từ camera
-        - Chạy Holistic
-        - Update self.latest_landmarks (lock)
+            self.latest_landmarks = None
+            self.latest_landmarks_kpts = None
+            self.landmarks_lock = Lock()
 
-      Sub-thread B2 (Render loop):
-        - Đọc frame mới nhất từ camera (SONG SONG với B1)
-        - Đọc latest_landmarks (có thể là từ frame trước, OK với mắt người)
-        - Vẽ skeleton + flip + overlay
-        - Update self.overlay_frame
+            self.stopped = False
+            self.inference_fps = 0.0
+            self.render_fps = 0.0
 
-    Lợi ích:
-      - Render FPS không bị limit bởi Holistic latency
-      - Skeleton chỉ trễ ~1-2 frame (~33-66ms) — không nhận thấy bằng mắt
-      - State machine vẫn dùng landmarks mới nhất (consistency)
-    """
-    def __init__(self):
-        self.overlay_frame = None
-        self.overlay_lock = Lock()
-        self._frame_id = 0              # Incremented mỗi frame mới
-        self._jpeg_buf = None           # Pre-encoded JPEG bytes
+        def start(self):
+            Thread(target=self._inference_loop, daemon=True, name="InferenceB1").start()
+            Thread(target=self._render_loop, daemon=True, name="RenderB2").start()
+            return self
 
-        # Shared between B1 and B2
-        self.latest_landmarks = None
-        self.latest_landmarks_kpts = None
-        self.landmarks_lock = Lock()
+        def _inference_loop(self):
+            """B1: chỉ chạy Holistic, không vẽ gì cả."""
+            prev_t = time.time()
+            while not self.stopped:
+                ret, frame = camera.read()
+                if not ret or frame is None:
+                    time.sleep(0.005)
+                    continue
 
-        self.stopped = False
-        self.inference_fps = 0.0
-        self.render_fps = 0.0
+                h, w = frame.shape[:2]
+                scale = HOLISTIC_INPUT_WIDTH / w
+                small = cv2.resize(frame, (HOLISTIC_INPUT_WIDTH, int(h * scale)))
+                rgb_small = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+                rgb_small.flags.writeable = False
+                results = holistic.process(rgb_small)
 
-    def start(self):
-        Thread(target=self._inference_loop, daemon=True, name="InferenceB1").start()
-        Thread(target=self._render_loop, daemon=True, name="RenderB2").start()
-        return self
+                t_now = time.time()
+                _smooth_landmark_list(results.pose_landmarks, pose_filter, t_now)
+                _smooth_landmark_list(results.left_hand_landmarks, lhand_filter, t_now)
+                _smooth_landmark_list(results.right_hand_landmarks, rhand_filter, t_now)
 
-    def _inference_loop(self):
-        """B1: chỉ chạy Holistic, không vẽ gì cả."""
-        prev_t = time.time()
-        while not self.stopped:
-            ret, frame = camera.read()
-            if not ret or frame is None:
-                time.sleep(0.005)
-                continue
+                kpts = extract_frame_keypoints(results, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT)
 
-            h, w = frame.shape[:2]
-            scale = HOLISTIC_INPUT_WIDTH / w
-            small = cv2.resize(frame, (HOLISTIC_INPUT_WIDTH, int(h * scale)))
-            rgb_small = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
-            rgb_small.flags.writeable = False
-            results = holistic.process(rgb_small)
+                with self.landmarks_lock:
+                    self.latest_landmarks = results
+                    self.latest_landmarks_kpts = kpts
 
-            # ─── One-Euro smoothing — giảm jitter, áp dụng trên normalized landmarks ───
-            # In-place modify protobuf .x .y → mọi consumer (draw_landmarks,
-            # extract_frame_keypoints) đều dùng giá trị đã smooth.
-            t_now = time.time()
-            _smooth_landmark_list(results.pose_landmarks,        pose_filter,  t_now)
-            _smooth_landmark_list(results.left_hand_landmarks,   lhand_filter, t_now)
-            _smooth_landmark_list(results.right_hand_landmarks,  rhand_filter, t_now)
+                now = time.time()
+                dt = now - prev_t
+                if dt > 0:
+                    self.inference_fps = 0.9 * self.inference_fps + 0.1 * (1.0 / dt)
+                prev_t = now
 
-            # Extract keypoints ở COORDINATE SPACE CỐ ĐỊNH (1280×720, match training).
-            # Không dùng w, h của camera vì camera có thể là 1080p → distribution shift.
-            kpts = extract_frame_keypoints(results, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT)
+        def _render_loop(self):
+            """B2: đọc landmarks cached, vẽ overlay, flip."""
+            prev_t = time.time()
+            target_interval = 1.0 / 30.0
 
-            with self.landmarks_lock:
-                self.latest_landmarks = results
-                self.latest_landmarks_kpts = kpts
+            while not self.stopped:
+                loop_start = time.time()
 
-            now = time.time()
-            dt = now - prev_t
-            if dt > 0:
-                self.inference_fps = 0.9 * self.inference_fps + 0.1 * (1.0 / dt)
-            prev_t = now
+                ret, frame = camera.read()
+                if not ret or frame is None:
+                    time.sleep(0.005)
+                    continue
 
-    def _render_loop(self):
-        """B2: đọc landmarks cached, vẽ overlay, flip. Chạy độc lập với B1."""
-        prev_t = time.time()
-        target_interval = 1.0 / 30.0  # cap 30 FPS render
+                h, w = frame.shape[:2]
 
-        while not self.stopped:
-            loop_start = time.time()
+                with self.landmarks_lock:
+                    results = self.latest_landmarks
+                    kpts = self.latest_landmarks_kpts
 
-            ret, frame = camera.read()
-            if not ret or frame is None:
-                time.sleep(0.005)
-                continue
+                if results is not None:
+                    line_thick = max(2, int(w / 640))
+                    circle_r = max(3, int(w / 480))
 
-            h, w = frame.shape[:2]
+                    mp_drawing.draw_landmarks(
+                        frame, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS,
+                        mp_drawing.DrawingSpec(color=(80, 110, 200), thickness=line_thick, circle_radius=circle_r),
+                        mp_drawing.DrawingSpec(color=(80, 80, 180), thickness=line_thick)
+                    )
+                    mp_drawing.draw_landmarks(
+                        frame, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS,
+                        mp_drawing.DrawingSpec(color=(0, 200, 0), thickness=line_thick, circle_radius=circle_r),
+                        mp_drawing.DrawingSpec(color=(0, 150, 0), thickness=line_thick)
+                    )
+                    mp_drawing.draw_landmarks(
+                        frame, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS,
+                        mp_drawing.DrawingSpec(color=(0, 165, 255), thickness=line_thick, circle_radius=circle_r),
+                        mp_drawing.DrawingSpec(color=(0, 120, 200), thickness=line_thick)
+                    )
 
-            # Snapshot landmarks (có thể stale 1 frame — chấp nhận được)
-            with self.landmarks_lock:
-                results = self.latest_landmarks
-                kpts = self.latest_landmarks_kpts
+                if MIRROR_FRAME:
+                    frame = cv2.flip(frame, 1)
 
-            if results is not None:
-                # Skeleton thickness scale theo frame width (3px @1080p, 2px @720p)
-                line_thick = max(2, int(w / 640))
-                circle_r = max(3, int(w / 480))
+                if kpts is not None:
+                    step_state_machine(practice_state, kpts)
 
-                # POSE skeleton (7 joints: nose, shoulders, elbows, wrists)
-                # Y hệt demo gốc: mp_drawing.draw_landmarks(frame, results.pose_landmarks, POSE_CONNECTIONS)
-                mp_drawing.draw_landmarks(
-                    frame, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS,
-                    mp_drawing.DrawingSpec(color=(80, 110, 200), thickness=line_thick, circle_radius=circle_r),
-                    mp_drawing.DrawingSpec(color=(80, 80, 180), thickness=line_thick)
-                )
+                now = time.time()
+                dt = now - prev_t
+                if dt > 0:
+                    self.render_fps = 0.9 * self.render_fps + 0.1 * (1.0 / dt)
+                prev_t = now
 
-                # LEFT HAND skeleton (10 joints)
-                mp_drawing.draw_landmarks(
-                    frame, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS,
-                    mp_drawing.DrawingSpec(color=(0, 200, 0), thickness=line_thick, circle_radius=circle_r),
-                    mp_drawing.DrawingSpec(color=(0, 150, 0), thickness=line_thick)
-                )
+                # HUD
+                ps = practice_state
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                state = ps.state if ps.active else "IDLE"
 
-                # RIGHT HAND skeleton (10 joints)
-                mp_drawing.draw_landmarks(
-                    frame, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS,
-                    mp_drawing.DrawingSpec(color=(0, 165, 255), thickness=line_thick, circle_radius=circle_r),
-                    mp_drawing.DrawingSpec(color=(0, 120, 200), thickness=line_thick)
-                )
+                cv2.putText(frame, f"FPS: {int(self.render_fps)}", (w - 150, 30),
+                            font, 0.7, (0, 255, 0), 2)
 
-            if MIRROR_FRAME:
-                frame = cv2.flip(frame, 1)
+                if state == "WAIT":
+                    elapsed = time.time() - ps.phase_start
+                    remaining = max(0, 2.0 - elapsed)
+                    count_num = int(remaining) + 1 if remaining > 0.05 else 0
+                    if count_num > 0:
+                        cv2.putText(frame, f"CHUAN BI... {count_num}",
+                                    (50, 100), font, 1.5, (0, 255, 255), 3)
 
-            # State machine sau flip — dùng kpts mới nhất
-            if kpts is not None:
-                step_state_machine(kpts, frame)
+                elif state == "COLLECT":
+                    n = len(ps.frames_queue)
+                    progress = int((n / SEQUENCE_LENGTH) * 400)
+                    cv2.rectangle(frame, (50, 50), (450, 80), (255, 255, 255), 2)
+                    cv2.rectangle(frame, (50, 50), (50 + progress, 80), (255, 0, 0), -1)
+                    cv2.putText(frame, f"THU THAP: {n}/{SEQUENCE_LENGTH}",
+                                (50, 40), font, 0.8, (255, 255, 255), 2)
 
-            now = time.time()
-            dt = now - prev_t
-            if dt > 0:
-                self.render_fps = 0.9 * self.render_fps + 0.1 * (1.0 / dt)
-            prev_t = now
+                elif state == "PREDICT":
+                    cv2.putText(frame, "DANG PHAN TICH...",
+                                (50, 100), font, 1.2, (200, 100, 255), 3)
 
-            # ─── HUD vẽ trực tiếp lên frame (y hệt demo gốc) ───
-            # Mọi thứ bake vào frame → MJPEG stream hiển thị ngay, không cần JS render
-            ps = practice_state
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            state = ps.state if ps.active else "IDLE"
-
-            # FPS góc trên phải (y hệt demo)
-            cv2.putText(frame, f"FPS: {int(self.render_fps)}", (w - 150, 30),
-                        font, 0.7, (0, 255, 0), 2)
-
-            if state == "WAIT":
-                elapsed = time.time() - ps.phase_start
-                remaining = max(0, 2.0 - elapsed)
-                count_num = int(remaining) + 1 if remaining > 0.05 else 0
-                if count_num > 0:
-                    cv2.putText(frame, f"CHUAN BI... {count_num}",
-                                (50, 100), font, 1.5, (0, 255, 255), 3)
-
-            elif state == "COLLECT":
-                n = len(ps.frames_queue)
-                progress = int((n / SEQUENCE_LENGTH) * 400)
-                cv2.rectangle(frame, (50, 50), (450, 80), (255, 255, 255), 2)
-                cv2.rectangle(frame, (50, 50), (50 + progress, 80), (255, 0, 0), -1)
-                cv2.putText(frame, f"THU THAP: {n}/{SEQUENCE_LENGTH}",
-                            (50, 40), font, 0.8, (255, 255, 255), 2)
-
-            elif state == "PREDICT":
-                cv2.putText(frame, "DANG PHAN TICH...",
-                            (50, 100), font, 1.2, (200, 100, 255), 3)
-
-            elif state == "SHOW":
-                if ps.last_top3 and len(ps.last_top3) >= 1:
-                    t1 = ps.last_top3[0]
-                    score1 = t1.get("score", 0)
-                    label1 = t1.get("labelVn", t1.get("label", "?"))
-                    main_color = (0, 255, 0) if ps.last_success else (0, 0, 255)
-                    cv2.putText(frame,
-                                f"TOP 1: {label1} ({score1:.1f}%)",
-                                (50, 120), font, 1.2, main_color, 3)
-                    if len(ps.last_top3) >= 2:
-                        t2 = ps.last_top3[1]
+                elif state == "SHOW":
+                    if ps.last_top3 and len(ps.last_top3) >= 1:
+                        t1 = ps.last_top3[0]
+                        score1 = t1.get("score", 0)
+                        label1 = t1.get("labelVn", t1.get("label", "?"))
+                        main_color = (0, 255, 0) if ps.last_success else (0, 0, 255)
                         cv2.putText(frame,
-                                    f"Top 2: {t2.get('labelVn', t2.get('label', '?'))} ({t2.get('score', 0):.1f}%)",
-                                    (50, 160), font, 0.8, (0, 255, 255), 2)
-                    if len(ps.last_top3) >= 3:
-                        t3 = ps.last_top3[2]
-                        cv2.putText(frame,
-                                    f"Top 3: {t3.get('labelVn', t3.get('label', '?'))} ({t3.get('score', 0):.1f}%)",
-                                    (50, 190), font, 0.8, (0, 255, 255), 2)
+                                    f"TOP 1: {label1} ({score1:.1f}%)",
+                                    (50, 120), font, 1.2, main_color, 3)
+                        if len(ps.last_top3) >= 2:
+                            t2 = ps.last_top3[1]
+                            cv2.putText(frame,
+                                        f"Top 2: {t2.get('labelVn', t2.get('label', '?'))} ({t2.get('score', 0):.1f}%)",
+                                        (50, 160), font, 0.8, (0, 255, 255), 2)
+                        if len(ps.last_top3) >= 3:
+                            t3 = ps.last_top3[2]
+                            cv2.putText(frame,
+                                        f"Top 3: {t3.get('labelVn', t3.get('label', '?'))} ({t3.get('score', 0):.1f}%)",
+                                        (50, 190), font, 0.8, (0, 255, 255), 2)
 
-            # Optional: downscale display stream để encode/network nhẹ hơn
-            if STREAM_WIDTH is not None and w > STREAM_WIDTH:
-                stream_h = int(h * STREAM_WIDTH / w)
-                frame = cv2.resize(frame, (STREAM_WIDTH, stream_h),
-                                   interpolation=cv2.INTER_AREA)
+                if STREAM_WIDTH is not None and w > STREAM_WIDTH:
+                    stream_h = int(h * STREAM_WIDTH / w)
+                    frame = cv2.resize(frame, (STREAM_WIDTH, stream_h),
+                                       interpolation=cv2.INTER_AREA)
 
-            # Pre-encode JPEG ngay trong render loop → MJPEG generator chỉ cần yield bytes
-            ok, jpeg = cv2.imencode('.jpg', frame, [
-                cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY,
-            ])
+                ok, jpeg = cv2.imencode('.jpg', frame, [
+                    cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY,
+                ])
 
+                with self.overlay_lock:
+                    self.overlay_frame = frame
+                    self._frame_id += 1
+                    if ok:
+                        self._jpeg_buf = jpeg.tobytes()
+
+                elapsed = time.time() - loop_start
+                if elapsed < target_interval:
+                    time.sleep(target_interval - elapsed)
+
+        def get_overlay(self):
             with self.overlay_lock:
-                self.overlay_frame = frame
-                self._frame_id += 1
-                if ok:
-                    self._jpeg_buf = jpeg.tobytes()
+                if self.overlay_frame is None:
+                    return None, 0
+                return self.overlay_frame, self._frame_id
 
-            # Pace render loop ~30 FPS
-            elapsed = time.time() - loop_start
-            if elapsed < target_interval:
-                time.sleep(target_interval - elapsed)
+        def get_jpeg(self):
+            with self.overlay_lock:
+                if self._jpeg_buf is None:
+                    return None, 0
+                return self._jpeg_buf, self._frame_id
 
-    def get_overlay(self):
-        with self.overlay_lock:
-            if self.overlay_frame is None:
-                return None, 0
-            return self.overlay_frame, self._frame_id
+        def stop(self):
+            self.stopped = True
 
-    def get_jpeg(self):
-        """Trả về JPEG bytes đã pre-encode + frame_id. Tránh encode lại trong MJPEG generator."""
-        with self.overlay_lock:
-            if self._jpeg_buf is None:
-                return None, 0
-            return self._jpeg_buf, self._frame_id
+    # Khởi tạo camera + holistic + inference worker
+    print("📷 Starting camera + Holistic (LOCAL mode)...")
+    camera = WebcamVideoStream().start()
+    time.sleep(1.0)
+    holistic = mp_holistic.Holistic(
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+        model_complexity=HOLISTIC_COMPLEXITY
+    )
+    print("✅ Camera + Holistic ready.")
 
-    def stop(self):
-        self.stopped = True
+    print("🧠 Starting inference worker...")
+    inference_worker = InferenceWorker().start()
+    time.sleep(0.5)
+    print("✅ Inference worker ready.")
 
-
-print("🧠 Starting inference worker...")
-inference_worker = InferenceWorker().start()
-time.sleep(0.5)
-print("✅ Inference worker ready.")
+else:
+    print("🌐 REMOTE mode — no camera needed. Waiting for WebSocket frames.")
 
 
 # ==========================================
@@ -738,117 +752,213 @@ if os.path.isdir(imgs_dir):
 # ==========================================
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "model_loaded": True,
-            "inference_fps": round(inference_worker.inference_fps, 1)}
+    fps = inference_worker.inference_fps if inference_worker else 0
+    return {
+        "status": "ok",
+        "model_loaded": True,
+        "camera_mode": CAMERA_MODE,
+        "inference_fps": round(fps, 1)
+    }
 
 @app.get("/vocab_list")
 def get_vocab_list():
     vocabs = [k for k in ACCENT_MAP.keys() if k != "NOTHING"]
     return {"vocabs": sorted(vocabs)}
 
-
-# ==========================================
-# MJPEG STREAM — zero-copy từ pre-encoded JPEG
-# ==========================================
-# Render loop đã encode JPEG sẵn → generator chỉ yield bytes.
-# Skip frame trùng (cùng frame_id) để tránh browser tích buffer cũ.
-def _mjpeg_generator():
-    print("[MJPEG] Client connected.")
-    last_frame_id = 0
-
-    while True:
-        jpeg_bytes, frame_id = inference_worker.get_jpeg()
-
-        if jpeg_bytes is None or frame_id == last_frame_id:
-            # Chưa có frame mới → sleep ngắn rồi thử lại
-            time.sleep(0.003)
-            continue
-
-        last_frame_id = frame_id
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n'
-               b'Content-Length: ' + str(len(jpeg_bytes)).encode() + b'\r\n\r\n'
-               + jpeg_bytes + b'\r\n')
-
-
-@app.get("/video_feed")
-def video_feed():
-    return StreamingResponse(
-        _mjpeg_generator(),
-        media_type='multipart/x-mixed-replace; boundary=frame',
-        headers={
-            'Cache-Control': 'no-cache, no-store, must-revalidate, private',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'X-Accel-Buffering': 'no',
-        }
-    )
-
+@app.get("/mode")
+def get_mode():
+    """Client dùng endpoint này để biết server đang chạy mode nào."""
+    return {"camera_mode": CAMERA_MODE}
 
 
 # ==========================================
-# WEBSOCKET (giữ nguyên)
+# MJPEG STREAM — chỉ cho LOCAL mode
+# ==========================================
+if CAMERA_MODE == "local":
+    def _mjpeg_generator():
+        print("[MJPEG] Client connected.")
+        last_frame_id = 0
+
+        while True:
+            jpeg_bytes, frame_id = inference_worker.get_jpeg()
+
+            if jpeg_bytes is None or frame_id == last_frame_id:
+                time.sleep(0.003)
+                continue
+
+            last_frame_id = frame_id
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n'
+                   b'Content-Length: ' + str(len(jpeg_bytes)).encode() + b'\r\n\r\n'
+                   + jpeg_bytes + b'\r\n')
+
+
+    @app.get("/video_feed")
+    def video_feed():
+        return StreamingResponse(
+            _mjpeg_generator(),
+            media_type='multipart/x-mixed-replace; boundary=frame',
+            headers={
+                'Cache-Control': 'no-cache, no-store, must-revalidate, private',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+                'X-Accel-Buffering': 'no',
+            }
+        )
+
+
+# ==========================================
+# WEBSOCKET — Dual mode
 # ==========================================
 @app.websocket("/ws/practice")
 async def websocket_practice(ws: WebSocket):
     await ws.accept()
-    ps = practice_state
-    pusher_task = None
 
-    try:
-        async def event_pusher():
-            while True:
-                events = ps.pop_events()
-                for evt in events:
-                    try:
-                        await ws.send_json(evt)
-                    except Exception:
-                        return
-                await asyncio.sleep(0.05)
+    if CAMERA_MODE == "local":
+        # ── LOCAL MODE: giống bản gốc, dùng global practice_state ──
+        ps = practice_state
+        pusher_task = None
 
-        pusher_task = asyncio.create_task(event_pusher())
-
-        while True:
-            raw = await ws.receive_text()
-            msg = json.loads(raw)
-            mtype = msg.get("type", "")
-
-            if mtype == "start":
-                word = msg.get("target_word", "").strip().upper()
-                if word not in ACCENT_MAP:
-                    await ws.send_json({"type": "error", "message": f"Từ '{word}' không hợp lệ."})
-                    continue
-                ps.target_no_accent = ACCENT_MAP[word].upper()
-                ps.target_display = word
-                ps.frames_queue.clear()
-                ps.last_top3 = []
-                ps.state = "WAIT"
-                ps.phase_start = time.time()
-                ps.active = True
-                await ws.send_json({"type": "started", "target_word": word})
-
-            elif mtype == "stop":
-                ps.active = False
-                ps.state = "IDLE"
-                ps.frames_queue.clear()
-                await ws.send_json({"type": "stopped"})
-
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
         try:
-            await ws.send_json({"type": "error", "message": str(e)})
-        except Exception:
+            async def event_pusher():
+                while True:
+                    events = ps.pop_events()
+                    for evt in events:
+                        try:
+                            await ws.send_json(evt)
+                        except Exception:
+                            return
+                    await asyncio.sleep(0.05)
+
+            pusher_task = asyncio.create_task(event_pusher())
+
+            while True:
+                raw = await ws.receive_text()
+                msg = json.loads(raw)
+                mtype = msg.get("type", "")
+
+                if mtype == "start":
+                    word = msg.get("target_word", "").strip().upper()
+                    if word not in ACCENT_MAP:
+                        await ws.send_json({"type": "error", "message": f"Từ '{word}' không hợp lệ."})
+                        continue
+                    ps.target_no_accent = ACCENT_MAP[word].upper()
+                    ps.target_display = word
+                    ps.frames_queue.clear()
+                    ps.last_top3 = []
+                    ps.state = "WAIT"
+                    ps.phase_start = time.time()
+                    ps.active = True
+                    await ws.send_json({"type": "started", "target_word": word})
+
+                elif mtype == "stop":
+                    ps.active = False
+                    ps.state = "IDLE"
+                    ps.frames_queue.clear()
+                    await ws.send_json({"type": "stopped"})
+
+        except WebSocketDisconnect:
             pass
-    finally:
-        if pusher_task:
-            pusher_task.cancel()
-        ps.active = False
+        except Exception as e:
+            try:
+                await ws.send_json({"type": "error", "message": str(e)})
+            except Exception:
+                pass
+        finally:
+            if pusher_task:
+                pusher_task.cancel()
+            ps.active = False
+
+    else:
+        # ── REMOTE MODE: per-session state, nhận frames từ client ──
+        ps = PracticeState()
+        pusher_task = None
+
+        try:
+            async def event_pusher():
+                while True:
+                    events = ps.pop_events()
+                    for evt in events:
+                        try:
+                            await ws.send_json(evt)
+                        except Exception:
+                            return
+                    await asyncio.sleep(0.05)
+
+            pusher_task = asyncio.create_task(event_pusher())
+
+            # Gửi thông tin mode cho client
+            await ws.send_json({"type": "mode", "camera_mode": "remote"})
+
+            while True:
+                msg = await ws.receive()
+
+                if msg["type"] == "websocket.receive":
+                    # Binary message = JPEG frame từ client
+                    if "bytes" in msg and msg["bytes"]:
+                        jpeg_data = msg["bytes"]
+                        # Xử lý frame trong thread pool để không block event loop
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, process_frame_remote, ps, jpeg_data)
+                        # Gửi ack để client biết có thể gửi frame tiếp (Send-Then-Wait)
+                        try:
+                            await ws.send_json({"type": "frame_ack"})
+                        except Exception:
+                            break
+
+                    # Text message = JSON control (start/stop)
+                    elif "text" in msg and msg["text"]:
+                        data = json.loads(msg["text"])
+                        mtype = data.get("type", "")
+
+                        if mtype == "start":
+                            word = data.get("target_word", "").strip().upper()
+                            if word not in ACCENT_MAP:
+                                await ws.send_json({"type": "error", "message": f"Từ '{word}' không hợp lệ."})
+                                continue
+                            ps.target_no_accent = ACCENT_MAP[word].upper()
+                            ps.target_display = word
+                            ps.frames_queue.clear()
+                            ps.last_top3 = []
+                            ps.state = "WAIT"
+                            ps.phase_start = time.time()
+                            ps.active = True
+                            # Reset filters cho lượt mới
+                            ps.pose_filter.reset()
+                            ps.lhand_filter.reset()
+                            ps.rhand_filter.reset()
+                            await ws.send_json({"type": "started", "target_word": word})
+
+                        elif mtype == "stop":
+                            ps.active = False
+                            ps.state = "IDLE"
+                            ps.frames_queue.clear()
+                            await ws.send_json({"type": "stopped"})
+
+                elif msg["type"] == "websocket.disconnect":
+                    break
+
+        except WebSocketDisconnect:
+            pass
+        except Exception as e:
+            print(f"[WS Remote Error] {e}")
+            try:
+                await ws.send_json({"type": "error", "message": str(e)})
+            except Exception:
+                pass
+        finally:
+            if pusher_task:
+                pusher_task.cancel()
+            ps.active = False
+            ps.close_holistic()
 
 
 @app.on_event("shutdown")
 def shutdown():
     print("🛑 Shutting down...")
-    inference_worker.stop()
-    camera.stop()
-    holistic.close()
+    if inference_worker:
+        inference_worker.stop()
+    if camera:
+        camera.stop()
+    if holistic:
+        holistic.close()

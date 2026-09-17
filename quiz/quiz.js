@@ -80,23 +80,30 @@ const allVocabs = validQuizData.map(item => item.correctLabel);
 // trong khi FastAPI luôn chạy ở 8000. Hard-code base để mọi request đều
 // trỏ về đúng backend bất kể trang được host từ đâu.
 //
-// Khi deploy production, đổi 1 dòng này (vd "https://api.signvn.com").
-const SERVER_HOST = window.location.hostname || '127.0.0.1';
-const SERVER_PORT = 8000;
-const SERVER_BASE = `http://${SERVER_HOST}:${SERVER_PORT}`;
-const VIDEO_FEED_URL = `${SERVER_BASE}/video_feed`;          // fallback MJPEG (giữ)
-const WS_URL = `ws://${SERVER_HOST}:${SERVER_PORT}/ws/practice`;
+// Khi deploy production, đổi 1 dòng này (vd "http://192.168.0.10:8000").
+const QUIZ_SERVER_URL = ''; // Để trống = same origin, hoặc điền URL server
+const SERVER_BASE = QUIZ_SERVER_URL || `${window.location.protocol}//${window.location.host}`;
+const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const WS_URL = QUIZ_SERVER_URL 
+    ? `${WS_PROTOCOL}//${new URL(QUIZ_SERVER_URL).host}/ws/practice`
+    : `${WS_PROTOCOL}//${window.location.host}/ws/practice`;
 
-const CAMERA_WIDTH = 480;
-const CAMERA_HEIGHT = 360;
-const JPEG_QUALITY = 0.5;
-const FRAME_STALENESS_MS = 200;
-const FRAME_MAX_INTERVAL = 33;
+const VIDEO_FEED_URL = `${SERVER_BASE}/video_feed`;          // fallback MJPEG (chỉ cho local)
+
+const CAMERA_WIDTH = 640;
+const CAMERA_HEIGHT = 480;
+const JPEG_QUALITY = 0.6;
+const FRAME_MAX_INTERVAL = 33; // ~30fps max
 
 // ============================================================================
 // 3. STATE
 // ============================================================================
 let historyStack = ['screen-main-menu'];
+let serverCameraMode = 'local'; // Sẽ update qua API
+let localVideoStream = null;
+let captureLoopId = null;
+let practiceWS = null;
+let inflightFrameTs = 0;
 
 // Quiz
 let currentQuestionIndex = 0;
@@ -508,11 +515,13 @@ window.startPractice = function (mode) {
 };
 
 // ============================================================================
-// 9. PRACTICE SESSION — WebSocket binary stream (upgrade từ MJPEG)
+// 9. PRACTICE SESSION — WebSocket binary stream / MJPEG
 // ============================================================================
 async function initPracticeSession() {
     const statusEl = document.getElementById('camera-status');
-    const imgEl = document.getElementById('webcam-video');
+    const imgEl = document.getElementById('webcam-video-img');
+    const videoEl = document.getElementById('webcam-video-stream');
+    const canvasEl = document.getElementById('capture-canvas');
 
     // Reset UI
     updateStatePill('connecting', 'Đang kết nối Server...', 'fa-spinner fa-spin');
@@ -528,21 +537,58 @@ async function initPracticeSession() {
 
     setupChallengeReference();
 
-    // ─── MJPEG stream: server vẽ skeleton + HUD, browser chỉ hiển thị ───
     statusEl.style.display = 'flex';
     statusEl.className = 'camera-status connecting';
-    statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang kết nối Camera...';
+    statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Khởi tạo hệ thống...';
 
-    if (imgEl) {
-        // Gán src = MJPEG endpoint → browser tự stream liên tục
-        imgEl.src = VIDEO_FEED_URL;
+    // 1. Fetch config từ server để xem đang chạy mode nào
+    try {
+        const res = await fetch(`${SERVER_BASE}/mode`);
+        const data = await res.json();
+        serverCameraMode = data.camera_mode || 'local';
+    } catch (e) {
+        console.warn("Lỗi fetch /mode, fallback về local", e);
+        serverCameraMode = 'local';
+    }
+
+    if (serverCameraMode === 'remote') {
+        // ─── REMOTE MODE: browser tự mở webcam ───
+        imgEl.style.display = 'none';
+        videoEl.style.display = 'block';
+        
+        try {
+            statusEl.innerHTML = '<i class="fas fa-camera"></i> Vui lòng cho phép truy cập Camera...';
+            localVideoStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: CAMERA_WIDTH, height: CAMERA_HEIGHT } 
+            });
+            videoEl.srcObject = localVideoStream;
+            await new Promise(resolve => {
+                videoEl.onloadedmetadata = () => {
+                    canvasEl.width = videoEl.videoWidth;
+                    canvasEl.height = videoEl.videoHeight;
+                    resolve();
+                };
+            });
+            statusEl.style.display = 'none';
+            console.log('[Remote Mode] Camera ready');
+        } catch (err) {
+            statusEl.innerHTML = '<i class="fas fa-times"></i> Không thể truy cập Camera.';
+            statusEl.className = 'camera-status error';
+            return;
+        }
+    } else {
+        // ─── LOCAL MODE: server gửi MJPEG stream ───
+        videoEl.style.display = 'none';
         imgEl.style.display = 'block';
+
+        statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang kết nối MJPEG...';
+        imgEl.src = VIDEO_FEED_URL;
         imgEl.onload = () => {
             statusEl.style.display = 'none';
-            console.log('[MJPEG] Stream connected');
+            console.log('[Local Mode] MJPEG Stream connected');
         };
         imgEl.onerror = () => {
-            statusEl.innerHTML = '<i class="fas fa-times"></i> Không kết nối được Camera. Kiểm tra server.';
+            statusEl.innerHTML = '<i class="fas fa-times"></i> Không kết nối được Camera (Local).';
             statusEl.className = 'camera-status error';
         };
     }
@@ -559,24 +605,64 @@ async function initPracticeSession() {
         updateStatePill('idle', 'Đã kết nối', 'fa-check-circle');
         const targetWord = document.getElementById('target-word').innerText.trim().toUpperCase();
         practiceWS.send(JSON.stringify({ type: 'start', target_word: targetWord }));
+        
+        if (serverCameraMode === 'remote') {
+            inflightFrameTs = 0;
+            startCaptureLoop();
+        }
     };
     practiceWS.onmessage = (evt) => {
-        try { handleWSMessage(JSON.parse(evt.data)); } catch (e) { console.error('WS parse:', e); }
+        if (typeof evt.data === 'string') {
+            try { handleWSMessage(JSON.parse(evt.data)); } catch (e) { console.error('WS parse:', e); }
+        }
     };
     practiceWS.onclose = () => updateStatePill('idle', 'Đã ngắt kết nối', 'fa-plug');
     practiceWS.onerror = () => updateStatePill('error', 'Lỗi kết nối Server', 'fa-exclamation-triangle');
 }
 
 // ============================================================================
-// 10. CAPTURE LOOP — REMOVED (MJPEG mode: server renders everything)
+// 10. CAPTURE LOOP (chỉ dùng cho remote mode)
 // ============================================================================
+function startCaptureLoop() {
+    const videoEl = document.getElementById('webcam-video-stream');
+    const canvasEl = document.getElementById('capture-canvas');
+    if (!videoEl || !canvasEl) return;
+    
+    const ctx = canvasEl.getContext('2d');
+    let lastCaptureTime = 0;
+
+    function loop(timestamp) {
+        if (!practiceWS || practiceWS.readyState !== WebSocket.OPEN) return;
+        
+        if (timestamp - lastCaptureTime > FRAME_MAX_INTERVAL) {
+            // Chỉ gửi frame nếu server đã xử lý xong frame trước đó (inflightFrameTs == 0)
+            if (inflightFrameTs === 0 && videoEl.readyState >= 2) {
+                ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+                canvasEl.toBlob((blob) => {
+                    if (practiceWS && practiceWS.readyState === WebSocket.OPEN) {
+                        practiceWS.send(blob); // Send binary
+                        inflightFrameTs = Date.now();
+                    }
+                }, 'image/jpeg', JPEG_QUALITY);
+                lastCaptureTime = timestamp;
+            }
+        }
+        captureLoopId = requestAnimationFrame(loop);
+    }
+    captureLoopId = requestAnimationFrame(loop);
+}
 
 // ============================================================================
 // 11. WS MESSAGE HANDLER + SKELETON DRAWING
 // ============================================================================
 function handleWSMessage(data) {
-    // Inflight tracking đã bỏ (MJPEG mode), giữ lại reset để code cũ không lỗi
+    if (data.type === 'frame_ack') {
+        inflightFrameTs = 0; // Server đã nhận và đang xử lý/xong frame
+        return;
+    }
+    
     if (data.type === 'status' || data.type === 'result') {
+        // Fallback clear inflight trong case server không gửi frame_ack kịp
         inflightFrameTs = 0;
     }
 
@@ -766,6 +852,12 @@ window.stopPractice = function () {
 function stopPracticeSession() {
     inflightFrameTs = 0;
 
+    // Dừng capture loop
+    if (captureLoopId) {
+        cancelAnimationFrame(captureLoopId);
+        captureLoopId = null;
+    }
+
     // Đóng WebSocket control
     if (practiceWS) {
         try {
@@ -777,8 +869,18 @@ function stopPracticeSession() {
         practiceWS = null;
     }
 
-    // Dừng MJPEG stream
-    const imgEl = document.getElementById('webcam-video');
+    // Dừng webcam stream
+    if (localVideoStream) {
+        localVideoStream.getTracks().forEach(track => track.stop());
+        localVideoStream = null;
+    }
+
+    // Dừng stream UI
+    const videoEl = document.getElementById('webcam-video-stream');
+    if (videoEl) {
+        videoEl.srcObject = null;
+    }
+    const imgEl = document.getElementById('webcam-video-img');
     if (imgEl) {
         imgEl.src = '';
         imgEl.onload = null;
