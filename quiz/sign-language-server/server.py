@@ -771,6 +771,53 @@ def get_mode():
     return {"camera_mode": CAMERA_MODE}
 
 
+from pydantic import BaseModel
+from typing import List
+
+class PredictRequest(BaseModel):
+    keypoints: List[List[List[float]]]  # Shape: [SEQUENCE_LENGTH][NUM_JOINTS][3]
+    target_word: str
+
+@app.post("/predict")
+async def predict_keypoints(req: PredictRequest):
+    """
+    Client-side MediaPipe mode:
+    Client trích xuất keypoints trên browser → gom đủ SEQUENCE_LENGTH frames
+    → POST lên đây → Server chỉ chạy STA-GCN inference.
+    """
+    try:
+        kpts = np.array(req.keypoints, dtype=np.float32)
+        expected_shape = (SEQUENCE_LENGTH, NUM_JOINTS, 3)
+        if kpts.shape != expected_shape:
+            return {"error": f"Expected shape {expected_shape}, got {kpts.shape}"}
+
+        inp = preprocess_for_model(kpts).to(device)
+        with torch.no_grad():
+            out, _ = model(inp)
+            prob = F.softmax(out, dim=1).cpu().numpy()[0]
+
+        idx3 = np.argsort(prob)[-3:][::-1]
+        top3 = [{
+            "label": MODEL_DICT[i].upper(),
+            "labelVn": NO_ACCENT_TO_ACCENT.get(MODEL_DICT[i].upper(), MODEL_DICT[i].upper()),
+            "score": round(float(prob[i]) * 100, 1)
+        } for i in idx3]
+
+        target_word = req.target_word.strip().upper()
+        target_no_accent = ACCENT_MAP.get(target_word, "").upper()
+        is_correct = (top3[0]["label"] == target_no_accent
+                      and top3[0]["score"] >= PREDICTION_THRESHOLD * 100)
+
+        return {
+            "success": is_correct,
+            "top3": top3,
+            "message": "CHÍNH XÁC!" if is_correct else f"AI nhận: {top3[0]['labelVn']}"
+        }
+    except Exception as e:
+        print(f"[POST /predict error] {e}")
+        return {"error": str(e)}
+
+
 # ==========================================
 # MJPEG STREAM — chỉ cho LOCAL mode
 # ==========================================

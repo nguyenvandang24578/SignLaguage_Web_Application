@@ -18,56 +18,56 @@
 // 1. DATA + TOPIC CLASSIFICATION
 // ============================================================================
 const quizData = [
-    { id: 0,  correctLabel: "ĂN",           videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/an.mp4",           topic: "action" },
-    { id: 1,  correctLabel: "BẠN",           videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ban.mp4",           topic: "emotion" },
-    { id: 2,  correctLabel: "BÀN CHÂN",      videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/banchan.mp4",       topic: "body" },
-    { id: 3,  correctLabel: "BÉ GÁI",        videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/begai.mp4",         topic: "emotion" },
-    { id: 4,  correctLabel: "BÉO",           videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/beo.mp4",           topic: "body" },
-    { id: 5,  correctLabel: "BÉ TRAI",       videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/betrai.mp4",        topic: "emotion" },
-    { id: 6,  correctLabel: "BỐ",            videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/bo.mp4",            topic: "emotion" },
-    { id: 7,  correctLabel: "CAO",           videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/cao.mp4",           topic: "body" },
-    { id: 8,  correctLabel: "CHẢI ĐẦU",      videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/chaidau.mp4",       topic: "hygiene" },
-    { id: 9,  correctLabel: "CHẠY",          videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/chay.mp4",          topic: "action" },
-    { id: 10, correctLabel: "CỔ",            videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/co.mp4",            topic: "body" },
-    { id: 11, correctLabel: "CƯỜI",          videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/cuoi.mp4",          topic: "emotion" },
-    { id: 12, correctLabel: "ĐÁNH RĂNG",     videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/danhrang.mp4",      topic: "hygiene" },
-    { id: 13, correctLabel: "ĐẦU",           videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/dau.mp4",           topic: "body" },
-    { id: 14, correctLabel: "ĐI",            videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/di.mp4",            topic: "action" },
-    { id: 15, correctLabel: "ĐI VỆ SINH",    videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/divesinh.mp4",      topic: "hygiene" },
-    { id: 16, correctLabel: "ĐÔI DÉP",       videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/doidep.mp4",       topic: "object" },
-    { id: 17, correctLabel: "ĐỨNG",          videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/dung.mp4",          topic: "action" },
-    { id: 18, correctLabel: "GĂNG TAY",      videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/gangtay.mp4",       topic: "object" },
-    { id: 19, correctLabel: "GẦY",           videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/gay.mp4",           topic: "body" },
+    { id: 0, correctLabel: "ĂN", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/an.mp4", topic: "action" },
+    { id: 1, correctLabel: "BẠN", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ban.mp4", topic: "emotion" },
+    { id: 2, correctLabel: "BÀN CHÂN", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/banchan.mp4", topic: "body" },
+    { id: 3, correctLabel: "BÉ GÁI", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/begai.mp4", topic: "emotion" },
+    { id: 4, correctLabel: "BÉO", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/beo.mp4", topic: "body" },
+    { id: 5, correctLabel: "BÉ TRAI", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/betrai.mp4", topic: "emotion" },
+    { id: 6, correctLabel: "BỐ", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/bo.mp4", topic: "emotion" },
+    { id: 7, correctLabel: "CAO", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/cao.mp4", topic: "body" },
+    { id: 8, correctLabel: "CHẢI ĐẦU", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/chaidau.mp4", topic: "hygiene" },
+    { id: 9, correctLabel: "CHẠY", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/chay.mp4", topic: "action" },
+    { id: 10, correctLabel: "CỔ", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/co.mp4", topic: "body" },
+    { id: 11, correctLabel: "CƯỜI", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/cuoi.mp4", topic: "emotion" },
+    { id: 12, correctLabel: "ĐÁNH RĂNG", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/danhrang.mp4", topic: "hygiene" },
+    { id: 13, correctLabel: "ĐẦU", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/dau.mp4", topic: "body" },
+    { id: 14, correctLabel: "ĐI", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/di.mp4", topic: "action" },
+    { id: 15, correctLabel: "ĐI VỆ SINH", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/divesinh.mp4", topic: "hygiene" },
+    { id: 16, correctLabel: "ĐÔI DÉP", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/doidep.mp4", topic: "object" },
+    { id: 17, correctLabel: "ĐỨNG", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/dung.mp4", topic: "action" },
+    { id: 18, correctLabel: "GĂNG TAY", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/gangtay.mp4", topic: "object" },
+    { id: 19, correctLabel: "GẦY", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/gay.mp4", topic: "body" },
     // id 20 = NOTHING → excluded
-    { id: 21, correctLabel: "BAO NHIÊU",     videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/baonhieu.mp4",      topic: "emotion" },
-    { id: 22, correctLabel: "BÍT TẤT",       videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/bittat.mp4",        topic: "object" },
-    { id: 23, correctLabel: "CẶP TÓC",       videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/captoc.mp4",        topic: "object" },
-    { id: 24, correctLabel: "CHÀO",          videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/chao.mp4",          topic: "emotion" },
-    { id: 25, correctLabel: "EM TRAI",       videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/emtrai.mp4",        topic: "emotion" },
-    { id: 26, correctLabel: "GỘI ĐẦU",       videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/goidau.mp4",        topic: "hygiene" },
-    { id: 27, correctLabel: "KHĂN MẶT",      videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/khanmat.mp4",       topic: "object" },
-    { id: 28, correctLabel: "KHÓC",          videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/khoc.mp4",          topic: "emotion" },
-    { id: 29, correctLabel: "KHỎE MẠNH",     videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/khoemanh.mp4",      topic: "emotion" },
-    { id: 30, correctLabel: "KÍNH",          videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/kinh.mp4",          topic: "object" },
-    { id: 31, correctLabel: "LƯỢC",          videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/luoc.mp4",          topic: "object" },
-    { id: 32, correctLabel: "MÁ",            videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ma.mp4",            topic: "body" },
-    { id: 33, correctLabel: "MẶC QUẦN ÁO",   videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/macquanao.mp4",     topic: "action" },
-    { id: 34, correctLabel: "MẮT",           videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/mat.mp4",           topic: "body" },
-    { id: 35, correctLabel: "MỆT MỎI",       videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/metmoi.mp4",        topic: "emotion" },
-    { id: 36, correctLabel: "MIỆNG",         videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/mieng.mp4",         topic: "body" },
-    { id: 37, correctLabel: "MŨI",           videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/mui.mp4",           topic: "body" },
-    { id: 38, correctLabel: "MŨ LƯỠI TRAI",  videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/muluoitrai.mp4",    topic: "object" },
-    { id: 39, correctLabel: "NẰM",           videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/nam.mp4",           topic: "action" },
-    { id: 40, correctLabel: "NGỒI",          videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ngoi.mp4",          topic: "action" },
-    { id: 41, correctLabel: "NGỦ",           videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ngu.mp4",           topic: "action" },
-    { id: 42, correctLabel: "NHẢY",          videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/nhay.mp4",          topic: "action" },
-    { id: 43, correctLabel: "NIỀM VUI",      videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/niemvui.mp4",       topic: "emotion" },
-    { id: 44, correctLabel: "NÓN",           videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/non.mp4",           topic: "object" },
-    { id: 45, correctLabel: "RỬA CHÂN",      videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ruachan.mp4",       topic: "hygiene" },
-    { id: 46, correctLabel: "RỬA MẶT",       videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ruamat.mp4",        topic: "hygiene" },
-    { id: 47, correctLabel: "RỬA TAY",       videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ruatay.mp4",        topic: "hygiene" },
-    { id: 48, correctLabel: "SẠCH",          videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/sach.mp4",          topic: "object" },
-    { id: 49, correctLabel: "SỨC KHỎE",      videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/suckhoe.mp4",       topic: "emotion" }
+    { id: 21, correctLabel: "BAO NHIÊU", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/baonhieu.mp4", topic: "emotion" },
+    { id: 22, correctLabel: "BÍT TẤT", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/bittat.mp4", topic: "object" },
+    { id: 23, correctLabel: "CẶP TÓC", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/captoc.mp4", topic: "object" },
+    { id: 24, correctLabel: "CHÀO", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/chao.mp4", topic: "emotion" },
+    { id: 25, correctLabel: "EM TRAI", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/emtrai.mp4", topic: "emotion" },
+    { id: 26, correctLabel: "GỘI ĐẦU", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/goidau.mp4", topic: "hygiene" },
+    { id: 27, correctLabel: "KHĂN MẶT", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/khanmat.mp4", topic: "object" },
+    { id: 28, correctLabel: "KHÓC", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/khoc.mp4", topic: "emotion" },
+    { id: 29, correctLabel: "KHỎE MẠNH", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/khoemanh.mp4", topic: "emotion" },
+    { id: 30, correctLabel: "KÍNH", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/kinh.mp4", topic: "object" },
+    { id: 31, correctLabel: "LƯỢC", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/luoc.mp4", topic: "object" },
+    { id: 32, correctLabel: "MÁ", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ma.mp4", topic: "body" },
+    { id: 33, correctLabel: "MẶC QUẦN ÁO", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/macquanao.mp4", topic: "action" },
+    { id: 34, correctLabel: "MẮT", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/mat.mp4", topic: "body" },
+    { id: 35, correctLabel: "MỆT MỎI", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/metmoi.mp4", topic: "emotion" },
+    { id: 36, correctLabel: "MIỆNG", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/mieng.mp4", topic: "body" },
+    { id: 37, correctLabel: "MŨI", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/mui.mp4", topic: "body" },
+    { id: 38, correctLabel: "MŨ LƯỠI TRAI", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/muluoitrai.mp4", topic: "object" },
+    { id: 39, correctLabel: "NẰM", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/nam.mp4", topic: "action" },
+    { id: 40, correctLabel: "NGỒI", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ngoi.mp4", topic: "action" },
+    { id: 41, correctLabel: "NGỦ", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ngu.mp4", topic: "action" },
+    { id: 42, correctLabel: "NHẢY", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/nhay.mp4", topic: "action" },
+    { id: 43, correctLabel: "NIỀM VUI", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/niemvui.mp4", topic: "emotion" },
+    { id: 44, correctLabel: "NÓN", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/non.mp4", topic: "object" },
+    { id: 45, correctLabel: "RỬA CHÂN", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ruachan.mp4", topic: "hygiene" },
+    { id: 46, correctLabel: "RỬA MẶT", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ruamat.mp4", topic: "hygiene" },
+    { id: 47, correctLabel: "RỬA TAY", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/ruatay.mp4", topic: "hygiene" },
+    { id: 48, correctLabel: "SẠCH", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/sach.mp4", topic: "object" },
+    { id: 49, correctLabel: "SỨC KHỎE", videoUrl: "https://huggingface.co/datasets/DangNguyenVan258/signvn-data/resolve/main/learn/videos/suckhoe.mp4", topic: "emotion" }
 ];
 
 const validQuizData = quizData.filter(item => item.videoUrl !== "" && item.id !== 20);
@@ -81,10 +81,12 @@ const allVocabs = validQuizData.map(item => item.correctLabel);
 // trỏ về đúng backend bất kể trang được host từ đâu.
 //
 // Khi deploy production, đổi 1 dòng này (vd "http://192.168.0.10:8000").
-const QUIZ_SERVER_URL = ''; // Để trống = same origin, hoặc điền URL server
+const QUIZ_SERVER_URL = 'https://dominant-steel-pace-hierarchy.trycloudflare.com';
 const SERVER_BASE = QUIZ_SERVER_URL || `${window.location.protocol}//${window.location.host}`;
-const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const WS_URL = QUIZ_SERVER_URL 
+const WS_PROTOCOL = QUIZ_SERVER_URL 
+    ? (QUIZ_SERVER_URL.startsWith('https') ? 'wss:' : 'ws:') 
+    : (window.location.protocol === 'https:' ? 'wss:' : 'ws:');
+const WS_URL = QUIZ_SERVER_URL
     ? `${WS_PROTOCOL}//${new URL(QUIZ_SERVER_URL).host}/ws/practice`
     : `${WS_PROTOCOL}//${window.location.host}/ws/practice`;
 
@@ -92,8 +94,14 @@ const VIDEO_FEED_URL = `${SERVER_BASE}/video_feed`;          // fallback MJPEG (
 
 const CAMERA_WIDTH = 640;
 const CAMERA_HEIGHT = 480;
-const JPEG_QUALITY = 0.6;
 const FRAME_MAX_INTERVAL = 33; // ~30fps max
+
+// MediaPipe Holistic — client-side keypoint extraction (remote mode)
+const SEQUENCE_LENGTH = 60;
+const MODEL_INPUT_WIDTH = 1280;
+const MODEL_INPUT_HEIGHT = 720;
+const MP_POSE_INDICES = [0, 11, 12, 13, 14, 15, 16]; // 7 pose joints
+const MP_HAND_INDICES = [0, 4, 5, 8, 9, 12, 13, 16, 17, 20]; // 10 hand joints
 
 // ============================================================================
 // 3. STATE
@@ -104,6 +112,12 @@ let localVideoStream = null;
 let captureLoopId = null;
 let practiceWS = null;
 let inflightFrameTs = 0;
+
+// MediaPipe client-side state
+let holisticLandmarker = null;
+let keypointBuffer = [];
+let practiceClientState = 'IDLE'; // IDLE | WAIT | COLLECT | PREDICT | SHOW
+let practicePhaseStart = 0;
 
 // Quiz
 let currentQuestionIndex = 0;
@@ -122,12 +136,10 @@ let challengeIndex = 0;
 let challengeScore = 0;
 let challengeWrong = [];
 
-// Camera + WS
-let practiceWS = null;
+// Camera + WS (legacy local mode)
 let practiceStream = null;
 let practiceVideoEl = null;
 let practiceRAF = null;
-let inflightFrameTs = 0;
 let lastSendTime = 0;
 
 // ============================================================================
@@ -206,16 +218,16 @@ function switchScreen(screenId, isBack = false) {
 
     backBtn.style.display = 'flex';
     switch (screenId) {
-        case 'screen-quiz-setup':       titleObj.innerText = "Cài Đặt Quiz"; break;
-        case 'screen-practice-menu':    titleObj.innerText = "Giáo Án Luyện Tập"; break;
-        case 'screen-challenge-setup':  titleObj.innerText = "Thử Thách Ngẫu Nhiên"; break;
+        case 'screen-quiz-setup': titleObj.innerText = "Cài Đặt Quiz"; break;
+        case 'screen-practice-menu': titleObj.innerText = "Giáo Án Luyện Tập"; break;
+        case 'screen-challenge-setup': titleObj.innerText = "Thử Thách Ngẫu Nhiên"; break;
         case 'screen-quiz':
             titleObj.innerText = "Giải Mã Ký Hiệu";
             scoreDisplay.style.display = 'flex';
             progressBar.style.display = 'block';
             startNewQuizSession();
             break;
-        case 'screen-results':          titleObj.innerText = "Kết Quả"; break;
+        case 'screen-results': titleObj.innerText = "Kết Quả"; break;
         case 'screen-practice':
             titleObj.innerText = practiceMode === 'challenge'
                 ? `Thử Thách ${challengeIndex + 1}/${challengePool.length}`
@@ -515,13 +527,85 @@ window.startPractice = function (mode) {
 };
 
 // ============================================================================
-// 9. PRACTICE SESSION — WebSocket binary stream / MJPEG
+// 9. MEDIAPIPE CLIENT-SIDE (remote mode only)
+// ============================================================================
+async function initMediaPipe() {
+    if (holisticLandmarker) return; // Đã khởi tạo rồi
+    console.log('[MediaPipe] Loading HolisticLandmarker...');
+    const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs');
+    const filesetResolver = await vision.FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm'
+    );
+    holisticLandmarker = await vision.HolisticLandmarker.createFromOptions(filesetResolver, {
+        baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/1/holistic_landmarker.task',
+            delegate: 'GPU'
+        },
+        runningMode: 'VIDEO',
+        minPoseDetectionConfidence: 0.5,
+        minPosePresenceConfidence: 0.5,
+        minHandLandmarksConfidence: 0.5
+    });
+    console.log('[MediaPipe] HolisticLandmarker ready!');
+}
+
+function extractKeypoints(results) {
+    // Trích 27 keypoints (7 pose + 10 left hand + 10 right hand)
+    // Tọa độ scale lên MODEL_INPUT_WIDTH × MODEL_INPUT_HEIGHT (giống lúc training)
+    const kpts = Array.from({ length: 27 }, () => [0, 0, 0]);
+
+    // Pose landmarks (7 joints)
+    if (results.poseLandmarks && results.poseLandmarks.length > 0) {
+        const pose = results.poseLandmarks[0];
+        MP_POSE_INDICES.forEach((mpIdx, i) => {
+            if (mpIdx < pose.length) {
+                kpts[i] = [
+                    pose[mpIdx].x * MODEL_INPUT_WIDTH,
+                    pose[mpIdx].y * MODEL_INPUT_HEIGHT,
+                    pose[mpIdx].visibility ?? 0
+                ];
+            }
+        });
+    }
+
+    // Left hand (10 joints)
+    if (results.leftHandLandmarks && results.leftHandLandmarks.length > 0) {
+        const lhand = results.leftHandLandmarks[0];
+        MP_HAND_INDICES.forEach((mpIdx, i) => {
+            if (mpIdx < lhand.length) {
+                kpts[7 + i] = [
+                    lhand[mpIdx].x * MODEL_INPUT_WIDTH,
+                    lhand[mpIdx].y * MODEL_INPUT_HEIGHT,
+                    1.0
+                ];
+            }
+        });
+    }
+
+    // Right hand (10 joints)
+    if (results.rightHandLandmarks && results.rightHandLandmarks.length > 0) {
+        const rhand = results.rightHandLandmarks[0];
+        MP_HAND_INDICES.forEach((mpIdx, i) => {
+            if (mpIdx < rhand.length) {
+                kpts[17 + i] = [
+                    rhand[mpIdx].x * MODEL_INPUT_WIDTH,
+                    rhand[mpIdx].y * MODEL_INPUT_HEIGHT,
+                    1.0
+                ];
+            }
+        });
+    }
+
+    return kpts;
+}
+
+// ============================================================================
+// 10. PRACTICE SESSION — Client-side MediaPipe (remote) / MJPEG+WS (local)
 // ============================================================================
 async function initPracticeSession() {
     const statusEl = document.getElementById('camera-status');
     const imgEl = document.getElementById('webcam-video-img');
     const videoEl = document.getElementById('webcam-video-stream');
-    const canvasEl = document.getElementById('capture-canvas');
 
     // Reset UI
     updateStatePill('connecting', 'Đang kết nối Server...', 'fa-spinner fa-spin');
@@ -543,7 +627,10 @@ async function initPracticeSession() {
 
     // 1. Fetch config từ server để xem đang chạy mode nào
     try {
-        const res = await fetch(`${SERVER_BASE}/mode`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`${SERVER_BASE}/mode`, { signal: controller.signal });
+        clearTimeout(timeoutId);
         const data = await res.json();
         serverCameraMode = data.camera_mode || 'local';
     } catch (e) {
@@ -552,22 +639,32 @@ async function initPracticeSession() {
     }
 
     if (serverCameraMode === 'remote') {
-        // ─── REMOTE MODE: browser tự mở webcam ───
+        // ─────────────────────────────────────────────────────────────────────
+        // REMOTE MODE: Client-side MediaPipe + POST /predict
+        // ─────────────────────────────────────────────────────────────────────
+
+        // 2a. Load MediaPipe HolisticLandmarker (lần đầu ~20MB, cached sau đó)
+        try {
+            statusEl.innerHTML = '<i class="fas fa-brain"></i> Đang tải AI Model (~20MB, chỉ lần đầu)...';
+            await initMediaPipe();
+        } catch (err) {
+            statusEl.innerHTML = '<i class="fas fa-times"></i> Lỗi tải MediaPipe AI.';
+            statusEl.className = 'camera-status error';
+            console.error('[MediaPipe] Init error:', err);
+            return;
+        }
+
+        // 2b. Mở webcam
         imgEl.style.display = 'none';
         videoEl.style.display = 'block';
-        
         try {
             statusEl.innerHTML = '<i class="fas fa-camera"></i> Vui lòng cho phép truy cập Camera...';
-            localVideoStream = await navigator.mediaDevices.getUserMedia({ 
-                video: { width: CAMERA_WIDTH, height: CAMERA_HEIGHT } 
+            localVideoStream = await navigator.mediaDevices.getUserMedia({
+                video: { width: CAMERA_WIDTH, height: CAMERA_HEIGHT }
             });
             videoEl.srcObject = localVideoStream;
             await new Promise(resolve => {
-                videoEl.onloadedmetadata = () => {
-                    canvasEl.width = videoEl.videoWidth;
-                    canvasEl.height = videoEl.videoHeight;
-                    resolve();
-                };
+                videoEl.onloadedmetadata = () => resolve();
             });
             statusEl.style.display = 'none';
             console.log('[Remote Mode] Camera ready');
@@ -576,8 +673,15 @@ async function initPracticeSession() {
             statusEl.className = 'camera-status error';
             return;
         }
+
+        // 2c. Bắt đầu client-side state machine (WAIT → COLLECT → PREDICT)
+        startKeypointCaptureLoop();
+        return; // Không cần WebSocket cho remote mode
+
     } else {
-        // ─── LOCAL MODE: server gửi MJPEG stream ───
+        // ─────────────────────────────────────────────────────────────────────
+        // LOCAL MODE: server mở webcam, stream MJPEG + WebSocket control
+        // ─────────────────────────────────────────────────────────────────────
         videoEl.style.display = 'none';
         imgEl.style.display = 'block';
 
@@ -593,7 +697,7 @@ async function initPracticeSession() {
         };
     }
 
-    // ─── WebSocket control (state machine + prediction events) ───
+    // ─── WebSocket control (chỉ cho LOCAL mode) ───
     try {
         practiceWS = new WebSocket(WS_URL);
     } catch (err) {
@@ -605,11 +709,6 @@ async function initPracticeSession() {
         updateStatePill('idle', 'Đã kết nối', 'fa-check-circle');
         const targetWord = document.getElementById('target-word').innerText.trim().toUpperCase();
         practiceWS.send(JSON.stringify({ type: 'start', target_word: targetWord }));
-        
-        if (serverCameraMode === 'remote') {
-            inflightFrameTs = 0;
-            startCaptureLoop();
-        }
     };
     practiceWS.onmessage = (evt) => {
         if (typeof evt.data === 'string') {
@@ -621,35 +720,145 @@ async function initPracticeSession() {
 }
 
 // ============================================================================
-// 10. CAPTURE LOOP (chỉ dùng cho remote mode)
+// 11. KEYPOINT CAPTURE LOOP + CLIENT STATE MACHINE (remote mode)
 // ============================================================================
-function startCaptureLoop() {
+function startKeypointCaptureLoop() {
     const videoEl = document.getElementById('webcam-video-stream');
-    const canvasEl = document.getElementById('capture-canvas');
-    if (!videoEl || !canvasEl) return;
-    
-    const ctx = canvasEl.getContext('2d');
-    let lastCaptureTime = 0;
+    if (!videoEl || !holisticLandmarker) return;
+
+    practiceClientState = 'WAIT';
+    practicePhaseStart = performance.now();
+    keypointBuffer = [];
+
+    updateStatePill('wait', 'Chuẩn bị...', 'fa-hourglass-half');
+    clearResultFeedback();
+
+    let lastDetectTime = 0;
 
     function loop(timestamp) {
-        if (!practiceWS || practiceWS.readyState !== WebSocket.OPEN) return;
-        
-        if (timestamp - lastCaptureTime > FRAME_MAX_INTERVAL) {
-            // Chỉ gửi frame nếu server đã xử lý xong frame trước đó (inflightFrameTs == 0)
-            if (inflightFrameTs === 0 && videoEl.readyState >= 2) {
-                ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
-                canvasEl.toBlob((blob) => {
-                    if (practiceWS && practiceWS.readyState === WebSocket.OPEN) {
-                        practiceWS.send(blob); // Send binary
-                        inflightFrameTs = Date.now();
+        if (practiceClientState === 'IDLE') return;
+
+        if (videoEl.readyState >= 2 && timestamp - lastDetectTime > FRAME_MAX_INTERVAL) {
+            const results = holisticLandmarker.detectForVideo(videoEl, timestamp);
+            const kpts = extractKeypoints(results);
+            lastDetectTime = timestamp;
+
+            switch (practiceClientState) {
+                case 'WAIT': {
+                    const elapsed = (timestamp - practicePhaseStart) / 1000;
+                    const remaining = Math.max(0, 2 - elapsed);
+                    const cdOverlay = document.getElementById('countdown-overlay');
+
+                    if (remaining > 0.05) {
+                        cdOverlay.textContent = Math.ceil(remaining);
+                        cdOverlay.classList.add('active');
+                        updateStatePill('wait', `Chuẩn bị... ${Math.ceil(remaining)}`, 'fa-hourglass-half');
                     }
-                }, 'image/jpeg', JPEG_QUALITY);
-                lastCaptureTime = timestamp;
+
+                    if (elapsed >= 2.0) {
+                        cdOverlay.textContent = 'BẮT ĐẦU!';
+                        setTimeout(() => cdOverlay.classList.remove('active'), 500);
+                        practiceClientState = 'COLLECT';
+                        keypointBuffer = [];
+                        document.getElementById('camera-wrapper')?.classList.add('recording');
+                        updateStatePill('collect', 'Hãy thực hiện ký hiệu!', 'fa-hand-sparkles');
+                    }
+                    break;
+                }
+
+                case 'COLLECT': {
+                    keypointBuffer.push(kpts);
+                    const progress = keypointBuffer.length / SEQUENCE_LENGTH;
+                    document.getElementById('collect-bar').style.width = `${progress * 100}%`;
+
+                    if (keypointBuffer.length % 5 === 0 || keypointBuffer.length === SEQUENCE_LENGTH) {
+                        updateStatePill('collect', `Thu thập: ${keypointBuffer.length}/${SEQUENCE_LENGTH}`, 'fa-hand-sparkles');
+                    }
+
+                    if (keypointBuffer.length >= SEQUENCE_LENGTH) {
+                        practiceClientState = 'PREDICT';
+                        document.getElementById('collect-bar').style.width = '100%';
+                        document.getElementById('camera-wrapper')?.classList.remove('recording');
+                        updateStatePill('predict', 'Đang phân tích...', 'fa-brain');
+                        sendPrediction(keypointBuffer);
+                    }
+                    break;
+                }
+
+                case 'PREDICT':
+                    // Đợi server trả kết quả, không làm gì
+                    break;
+
+                case 'SHOW': {
+                    const elapsed = (timestamp - practicePhaseStart) / 1000;
+                    if (elapsed >= 3.0) {
+                        // Lượt mới
+                        practiceClientState = 'WAIT';
+                        practicePhaseStart = timestamp;
+                        keypointBuffer = [];
+                        document.getElementById('collect-bar').style.width = '0%';
+                        clearResultFeedback();
+                        updatePredCards([]);
+                        updateStatePill('wait', 'Lượt mới...', 'fa-hourglass-half');
+                    }
+                    break;
+                }
             }
         }
+
         captureLoopId = requestAnimationFrame(loop);
     }
+
     captureLoopId = requestAnimationFrame(loop);
+}
+
+async function sendPrediction(buffer) {
+    const targetWord = document.getElementById('target-word')?.innerText.trim().toUpperCase() || '';
+
+    try {
+        const res = await fetch(`${SERVER_BASE}/predict`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                keypoints: buffer,
+                target_word: targetWord
+            })
+        });
+
+        const data = await res.json();
+
+        if (data.error) {
+            console.error('[Predict] Server error:', data.error);
+            updateStatePill('error', 'Lỗi phân tích', 'fa-exclamation-triangle');
+            practiceClientState = 'SHOW';
+            practicePhaseStart = performance.now();
+            return;
+        }
+
+        // Hiển thị kết quả
+        if (data.top3) updatePredCards(data.top3);
+        const predicted = data.top3?.[0]?.labelVn || data.top3?.[0]?.label || '—';
+        const target = document.getElementById('target-word')?.innerText.trim() || '';
+
+        if (data.success) {
+            document.getElementById('success-overlay').classList.add('active');
+            updateStatePill('success', 'CHÍNH XÁC!', 'fa-check-circle');
+            showResultFeedback(true, predicted, target);
+            onPracticeSuccess();
+            practiceClientState = 'IDLE'; // Dừng loop
+        } else {
+            updateStatePill('wrong', 'CHƯA ĐÚNG', 'fa-times-circle');
+            showResultFeedback(false, predicted, target);
+            practiceClientState = 'SHOW';
+            practicePhaseStart = performance.now();
+        }
+
+    } catch (e) {
+        console.error('[Predict] Fetch error:', e);
+        updateStatePill('error', 'Lỗi kết nối Server', 'fa-exclamation-triangle');
+        practiceClientState = 'SHOW';
+        practicePhaseStart = performance.now();
+    }
 }
 
 // ============================================================================
@@ -660,7 +869,7 @@ function handleWSMessage(data) {
         inflightFrameTs = 0; // Server đã nhận và đang xử lý/xong frame
         return;
     }
-    
+
     if (data.type === 'status' || data.type === 'result') {
         // Fallback clear inflight trong case server không gửi frame_ack kịp
         inflightFrameTs = 0;
@@ -676,7 +885,7 @@ function handleWSMessage(data) {
     if (data.type === 'result') {
         if (data.top3) updatePredCards(data.top3);
         const predicted = data.top3?.[0]?.labelVn || data.top3?.[0]?.label || '—';
-        const target    = document.getElementById('target-word')?.innerText.trim() || '';
+        const target = document.getElementById('target-word')?.innerText.trim() || '';
 
         if (data.success) {
             document.getElementById('success-overlay').classList.add('active');
@@ -852,20 +1061,24 @@ window.stopPractice = function () {
 function stopPracticeSession() {
     inflightFrameTs = 0;
 
+    // Dừng client-side state machine
+    practiceClientState = 'IDLE';
+    keypointBuffer = [];
+
     // Dừng capture loop
     if (captureLoopId) {
         cancelAnimationFrame(captureLoopId);
         captureLoopId = null;
     }
 
-    // Đóng WebSocket control
+    // Đóng WebSocket control (local mode)
     if (practiceWS) {
         try {
             if (practiceWS.readyState === WebSocket.OPEN) {
                 practiceWS.send(JSON.stringify({ type: 'stop' }));
             }
             practiceWS.close();
-        } catch (e) {}
+        } catch (e) { }
         practiceWS = null;
     }
 
@@ -887,6 +1100,7 @@ function stopPracticeSession() {
         imgEl.onerror = null;
     }
 
+    document.getElementById('camera-wrapper')?.classList.remove('recording');
     const cdOverlay = document.getElementById('countdown-overlay');
     if (cdOverlay) cdOverlay.classList.remove('active');
     const successOverlay = document.getElementById('success-overlay');
@@ -897,7 +1111,7 @@ function stopPracticeSession() {
 
 // ─── RESULT FEEDBACK helpers ─────────────────────────────────────────────
 function showResultFeedback(success, predictedLabel, targetLabel) {
-    const card1   = document.getElementById('pred-1');
+    const card1 = document.getElementById('pred-1');
     const overlay = document.getElementById('success-overlay');
 
     if (success) {
