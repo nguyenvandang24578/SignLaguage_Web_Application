@@ -599,6 +599,73 @@ function extractKeypoints(results) {
     return kpts;
 }
 
+// ─── SKELETON VISUALIZATION ───
+const POSE_CONNECTIONS = [
+    [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+    [11, 23], [12, 24], [23, 24]
+];
+const HAND_CONNECTIONS = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [0,9],[9,10],[10,11],[11,12],
+    [0,13],[13,14],[14,15],[15,16],
+    [0,17],[17,18],[18,19],[19,20],
+    [5,9],[9,13],[13,17]
+];
+
+function drawSkeleton(results, ctx, w, h) {
+    ctx.clearRect(0, 0, w, h);
+
+    // ─ Pose (xanh lá) ─
+    if (results.poseLandmarks && results.poseLandmarks.length > 0) {
+        const pose = results.poseLandmarks[0];
+        ctx.strokeStyle = '#00FF66';
+        ctx.lineWidth = 3;
+        for (const [a, b] of POSE_CONNECTIONS) {
+            if (a < pose.length && b < pose.length) {
+                ctx.beginPath();
+                ctx.moveTo(pose[a].x * w, pose[a].y * h);
+                ctx.lineTo(pose[b].x * w, pose[b].y * h);
+                ctx.stroke();
+            }
+        }
+        const poseJoints = [0, 11, 12, 13, 14, 15, 16];
+        ctx.fillStyle = '#00FF66';
+        for (const idx of poseJoints) {
+            if (idx < pose.length) {
+                ctx.beginPath();
+                ctx.arc(pose[idx].x * w, pose[idx].y * h, 5, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+    }
+
+    // ─ Hands ─
+    function drawHand(landmarks, lineColor, dotColor) {
+        if (!landmarks || landmarks.length === 0) return;
+        const hand = landmarks[0];
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = 2;
+        for (const [a, b] of HAND_CONNECTIONS) {
+            if (a < hand.length && b < hand.length) {
+                ctx.beginPath();
+                ctx.moveTo(hand[a].x * w, hand[a].y * h);
+                ctx.lineTo(hand[b].x * w, hand[b].y * h);
+                ctx.stroke();
+            }
+        }
+        ctx.fillStyle = dotColor;
+        for (const lm of hand) {
+            ctx.beginPath();
+            ctx.arc(lm.x * w, lm.y * h, 3, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+    }
+
+    drawHand(results.leftHandLandmarks, '#FF9900', '#FFCC00');
+    drawHand(results.rightHandLandmarks, '#00CCFF', '#66EEFF');
+}
+
 // ============================================================================
 // 10. PRACTICE SESSION — Client-side MediaPipe (remote) / MJPEG+WS (local)
 // ============================================================================
@@ -724,7 +791,22 @@ async function initPracticeSession() {
 // ============================================================================
 function startKeypointCaptureLoop() {
     const videoEl = document.getElementById('webcam-video-stream');
+    const canvasEl = document.getElementById('capture-canvas');
     if (!videoEl || !holisticLandmarker) return;
+
+    // Setup skeleton overlay canvas
+    canvasEl.style.display = 'block';
+    canvasEl.style.position = 'absolute';
+    canvasEl.style.top = '0';
+    canvasEl.style.left = '0';
+    canvasEl.style.width = '100%';
+    canvasEl.style.height = '100%';
+    canvasEl.style.pointerEvents = 'none';
+    canvasEl.style.zIndex = '2';
+    canvasEl.style.transform = 'scaleX(-1)'; // Mirror giống video
+    canvasEl.width = videoEl.videoWidth || CAMERA_WIDTH;
+    canvasEl.height = videoEl.videoHeight || CAMERA_HEIGHT;
+    const skeletonCtx = canvasEl.getContext('2d');
 
     practiceClientState = 'WAIT';
     practicePhaseStart = performance.now();
@@ -736,12 +818,18 @@ function startKeypointCaptureLoop() {
     let lastDetectTime = 0;
 
     function loop(timestamp) {
-        if (practiceClientState === 'IDLE') return;
+        if (practiceClientState === 'IDLE') {
+            skeletonCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+            return;
+        }
 
         if (videoEl.readyState >= 2 && timestamp - lastDetectTime > FRAME_MAX_INTERVAL) {
             const results = holisticLandmarker.detectForVideo(videoEl, timestamp);
             const kpts = extractKeypoints(results);
             lastDetectTime = timestamp;
+
+            // Vẽ skeleton lên canvas
+            drawSkeleton(results, skeletonCtx, canvasEl.width, canvasEl.height);
 
             switch (practiceClientState) {
                 case 'WAIT': {

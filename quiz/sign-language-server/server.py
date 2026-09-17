@@ -785,16 +785,23 @@ async def predict_keypoints(req: PredictRequest):
     Client trích xuất keypoints trên browser → gom đủ SEQUENCE_LENGTH frames
     → POST lên đây → Server chỉ chạy STA-GCN inference.
     """
+    print(f"\n{'='*50}")
+    print(f"📩 POST /predict — target_word: {req.target_word}")
+    print(f"   📊 Received {len(req.keypoints)} frames × {len(req.keypoints[0]) if req.keypoints else 0} joints")
+
     try:
         kpts = np.array(req.keypoints, dtype=np.float32)
         expected_shape = (SEQUENCE_LENGTH, NUM_JOINTS, 3)
         if kpts.shape != expected_shape:
+            print(f"   ❌ Shape mismatch: expected {expected_shape}, got {kpts.shape}")
             return {"error": f"Expected shape {expected_shape}, got {kpts.shape}"}
 
+        t0 = time.time()
         inp = preprocess_for_model(kpts).to(device)
         with torch.no_grad():
             out, _ = model(inp)
             prob = F.softmax(out, dim=1).cpu().numpy()[0]
+        inference_ms = (time.time() - t0) * 1000
 
         idx3 = np.argsort(prob)[-3:][::-1]
         top3 = [{
@@ -808,13 +815,21 @@ async def predict_keypoints(req: PredictRequest):
         is_correct = (top3[0]["label"] == target_no_accent
                       and top3[0]["score"] >= PREDICTION_THRESHOLD * 100)
 
+        print(f"   ⚡ Inference: {inference_ms:.1f}ms")
+        print(f"   🏆 Top-3: {top3[0]['labelVn']} ({top3[0]['score']}%), "
+              f"{top3[1]['labelVn']} ({top3[1]['score']}%), "
+              f"{top3[2]['labelVn']} ({top3[2]['score']}%)")
+        print(f"   {'✅ CORRECT!' if is_correct else '❌ WRONG'} "
+              f"(target={target_word}, predicted={top3[0]['labelVn']})")
+        print(f"{'='*50}\n")
+
         return {
             "success": is_correct,
             "top3": top3,
             "message": "CHÍNH XÁC!" if is_correct else f"AI nhận: {top3[0]['labelVn']}"
         }
     except Exception as e:
-        print(f"[POST /predict error] {e}")
+        print(f"   ❌ Error: {e}")
         return {"error": str(e)}
 
 
