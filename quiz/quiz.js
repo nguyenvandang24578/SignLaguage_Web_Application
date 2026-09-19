@@ -81,10 +81,10 @@ const allVocabs = validQuizData.map(item => item.correctLabel);
 // trỏ về đúng backend bất kể trang được host từ đâu.
 //
 // Khi deploy production, đổi 1 dòng này (vd "http://192.168.0.10:8000").
-const QUIZ_SERVER_URL = 'https://dominant-steel-pace-hierarchy.trycloudflare.com';
+const QUIZ_SERVER_URL = 'https://brothers-hotels-voip-trends.trycloudflare.com';
 const SERVER_BASE = QUIZ_SERVER_URL || `${window.location.protocol}//${window.location.host}`;
-const WS_PROTOCOL = QUIZ_SERVER_URL 
-    ? (QUIZ_SERVER_URL.startsWith('https') ? 'wss:' : 'ws:') 
+const WS_PROTOCOL = QUIZ_SERVER_URL
+    ? (QUIZ_SERVER_URL.startsWith('https') ? 'wss:' : 'ws:')
     : (window.location.protocol === 'https:' ? 'wss:' : 'ws:');
 const WS_URL = QUIZ_SERVER_URL
     ? `${WS_PROTOCOL}//${new URL(QUIZ_SERVER_URL).host}/ws/practice`
@@ -605,12 +605,12 @@ const POSE_CONNECTIONS = [
     [11, 23], [12, 24], [23, 24]
 ];
 const HAND_CONNECTIONS = [
-    [0,1],[1,2],[2,3],[3,4],
-    [0,5],[5,6],[6,7],[7,8],
-    [0,9],[9,10],[10,11],[11,12],
-    [0,13],[13,14],[14,15],[15,16],
-    [0,17],[17,18],[18,19],[19,20],
-    [5,9],[9,13],[13,17]
+    [0, 1], [1, 2], [2, 3], [3, 4],
+    [0, 5], [5, 6], [6, 7], [7, 8],
+    [0, 9], [9, 10], [10, 11], [11, 12],
+    [0, 13], [13, 14], [14, 15], [15, 16],
+    [0, 17], [17, 18], [18, 19], [19, 20],
+    [5, 9], [9, 13], [13, 17]
 ];
 
 function drawSkeleton(results, ctx, w, h) {
